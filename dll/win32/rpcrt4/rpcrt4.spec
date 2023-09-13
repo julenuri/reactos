@@ -86,7 +86,7 @@
 86 stub I_RpcServerUseProtseq2W
 87 stub I_RpcServerUseProtseqEp2A
 88 stub I_RpcServerUseProtseqEp2W
-# I_RpcSessionStrictContextHandle
+89 stub I_RpcSessionStrictContextHandle
 90 stub I_RpcSetAsyncHandle
 91 stub I_RpcSsDontSerializeContext
 92 stub I_RpcSystemFunction001
