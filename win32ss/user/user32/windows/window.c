@@ -944,7 +944,7 @@ GetAncestor(HWND hwnd, UINT gaFlags)
         switch (gaFlags)
         {
             case GA_PARENT:
-                if (Wnd->spwndParent != NULL)
+                if (WOW64_CAST_TO_PTR(Wnd->spwndParent) != NULL)
                     Ancestor = DesktopPtrToUser(Wnd->spwndParent);
                 break;
 
@@ -1055,12 +1055,12 @@ GetParent(HWND hWnd)
             WndParent = NULL;
             if (Wnd->style & WS_POPUP)
             {
-                if (Wnd->spwndOwner != NULL)
+                if (WOW64_CAST_TO_PTR(Wnd->spwndOwner) != NULL)
                     WndParent = DesktopPtrToUser(Wnd->spwndOwner);
             }
             else if (Wnd->style & WS_CHILD)
             {
-                if (Wnd->spwndParent != NULL)
+                if (WOW64_CAST_TO_PTR(Wnd->spwndParent) != NULL)
                     WndParent = DesktopPtrToUser(Wnd->spwndParent);
             }
 
@@ -1108,36 +1108,36 @@ GetWindow(HWND hWnd,
         switch (uCmd)
         {
             case GW_OWNER:
-                if (Wnd->spwndOwner != NULL)
+                if (WOW64_CAST_TO_PTR(Wnd->spwndOwner) != NULL)
                     FoundWnd = DesktopPtrToUser(Wnd->spwndOwner);
                 break;
 
             case GW_HWNDFIRST:
-                if(Wnd->spwndParent != NULL)
+                if(WOW64_CAST_TO_PTR(Wnd->spwndParent) != NULL)
                 {
                     FoundWnd = DesktopPtrToUser(Wnd->spwndParent);
-                    if (FoundWnd->spwndChild != NULL)
+                    if (WOW64_CAST_TO_PTR(FoundWnd->spwndChild) != NULL)
                         FoundWnd = DesktopPtrToUser(FoundWnd->spwndChild);
                 }
                 break;
             case GW_HWNDNEXT:
-                if (Wnd->spwndNext != NULL)
+                if (WOW64_CAST_TO_PTR(Wnd->spwndNext) != NULL)
                     FoundWnd = DesktopPtrToUser(Wnd->spwndNext);
                 break;
 
             case GW_HWNDPREV:
-                if (Wnd->spwndPrev != NULL)
+                if (WOW64_CAST_TO_PTR(Wnd->spwndPrev) != NULL)
                     FoundWnd = DesktopPtrToUser(Wnd->spwndPrev);
                 break;
 
             case GW_CHILD:
-                if (Wnd->spwndChild != NULL)
+                if (WOW64_CAST_TO_PTR(Wnd->spwndChild) != NULL)
                     FoundWnd = DesktopPtrToUser(Wnd->spwndChild);
                 break;
 
             case GW_HWNDLAST:
                 FoundWnd = Wnd;
-                while ( FoundWnd->spwndNext != NULL)
+                while (WOW64_CAST_TO_PTR(FoundWnd->spwndNext) != NULL)
                     FoundWnd = DesktopPtrToUser(FoundWnd->spwndNext);
                 break;
 
@@ -1259,7 +1259,7 @@ GetWindowModuleFileNameA(HWND hwnd,
     if (!Wnd)
         return 0;
 
-    return GetModuleFileNameA(Wnd->hModule, lpszFileName, cchFileNameMax);
+    return GetModuleFileNameA(WOW64_CAST_TO_HANDLE(Wnd->hModule), lpszFileName, cchFileNameMax);
 }
 
 
@@ -1276,7 +1276,7 @@ GetWindowModuleFileNameW(HWND hwnd,
     if (!Wnd)
         return 0;
 
-    return GetModuleFileNameW( Wnd->hModule, lpszFileName, cchFileNameMax );
+    return GetModuleFileNameW(WOW64_CAST_TO_HANDLE(Wnd->hModule), lpszFileName, cchFileNameMax );
 }
 
 /*
@@ -1435,7 +1435,7 @@ GetWindowThreadProcessId(HWND hWnd,
 
     if (!pWnd) return Ret;
 
-    ti = pWnd->head.pti;
+    ti = WOW64_CAST_TO_PTR(pWnd->head.pti);
 
     if (ti)
     {
@@ -1483,7 +1483,7 @@ IsChild(HWND hWndParent,
     {
         while (Wnd != NULL && ((Wnd->style & (WS_POPUP|WS_CHILD)) == WS_CHILD))
         {
-            if (Wnd->spwndParent != NULL)
+            if (WOW64_CAST_TO_PTR(Wnd->spwndParent) != NULL)
             {
                 Wnd = DesktopPtrToUser(Wnd->spwndParent);
 
@@ -1577,8 +1577,8 @@ IsWindowVisible(HWND hWnd)
                     Ret = FALSE;
                     break;
                 }
-
-                if (Wnd->spwndParent != NULL)
+ 
+                if (WOW64_CAST_TO_PTR(Wnd->spwndParent) != NULL)
                     Wnd = DesktopPtrToUser(Wnd->spwndParent);
                 else
                     break;
