@@ -513,7 +513,7 @@ LdrpInitializeThread(IN PCONTEXT Context)
     RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED ActCtx;
     NTSTATUS Status;
     PVOID EntryPoint;
-#if defined(_WOW64) && defined(_WIN64) 
+#ifdef _M_AMD64
     PIMAGE_NT_HEADERS NtHeader;
     VOID (*pWow64LdrpInitialize)(PVOID) = NULL;
     ANSI_STRING Wow64LdrpInitializeImportName = RTL_CONSTANT_STRING("Wow64LdrpInitialize");
@@ -538,7 +538,7 @@ LdrpInitializeThread(IN PCONTEXT Context)
     /* Make sure we are not shutting down */
     if (LdrpShutdownInProgress) goto Exit;
 
-#if defined(_WOW64) && defined(_WIN64) 
+#ifdef _M_AMD64 
     /* Get the NT Headers */
     NtHeader = RtlImageNtHeader(Peb->ImageBaseAddress);
     
@@ -1814,7 +1814,7 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     ULONG ComSectionSize;
     ANSI_STRING BaseProcessInitPostImportName = RTL_CONSTANT_STRING("BaseProcessInitPostImport");
     ANSI_STRING BaseQueryModuleDataName = RTL_CONSTANT_STRING("BaseQueryModuleData");
-#if defined(_WOW64) && defined(_WIN64) 
+#ifdef _M_AMD64
     ANSI_STRING Wow64LdrpInitializeImportName = RTL_CONSTANT_STRING("Wow64LdrpInitialize");
 #endif
     PVOID OldShimData;
@@ -1848,7 +1848,7 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     PWCHAR Current;
     ULONG ExecuteOptions = 0;
     PVOID ViewBase;
-#if defined(_WOW64) && defined(_WIN64) 
+#ifdef _M_AMD64
     VOID (*pWow64LdrpInitialize)(PVOID) = NULL;
 #endif
 
@@ -2373,7 +2373,7 @@ LdrpInitializeProcess(IN PCONTEXT Context,
         DPRINT1("We don't support .NET applications yet\n");
     }
 
-#if defined(_WOW64) && defined(_WIN64) 
+#ifdef _M_AMD64
     if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_I386)
     {
         PVOID Wow64BaseAddress;
