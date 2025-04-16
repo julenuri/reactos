@@ -569,7 +569,7 @@ LdrpInitializeThread(IN PCONTEXT Context)
         }
         
         pWow64LdrpInitialize(Context);
-        return;
+        goto Exit;
     }
 #endif
 
