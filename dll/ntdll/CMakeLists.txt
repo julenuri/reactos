@@ -1,7 +1,11 @@
 
 add_subdirectory(nt_0600)
 
-spec2def(ntdll.dll def/ntdll.spec ADD_IMPORTLIB)
+if(SARCH STREQUAL "wow64")
+    spec2def(ntdll.dll def/ntdllwow.spec ADD_IMPORTLIB)
+else()
+    spec2def(ntdll.dll def/ntdll.spec ADD_IMPORTLIB)
+endif()
 
 # Embed RTC libs
 if (STACK_PROTECTOR)

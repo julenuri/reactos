@@ -47,6 +47,8 @@
 #include <wine/debug.h>
 #include <wine/list.h>
 
+#include "../../ntdll/wow64/ntdll32.h"
+
 #define IMM_INIT_MAGIC          0x19650412
 #define IMM_INVALID_CANDFORM    ULONG_MAX
 #define INVALID_HOTKEY_ID       0xFFFFFFFF
