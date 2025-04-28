@@ -212,7 +212,7 @@ BOOL WINAPI RegisterClientPFN(VOID)
   return NT_SUCCESS(Status) ? TRUE : FALSE;
 }
 
-#if defined(_WOW64)
+#if defined(BUILD_WOW6432)
     
 /* FIXME? */
 WNDPROC GETPFNCLIENTA(int fnid)
