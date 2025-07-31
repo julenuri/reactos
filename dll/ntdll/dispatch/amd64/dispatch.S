@@ -16,6 +16,7 @@ EXTERN NtContinue:PROC
 EXTERN LdrpInit:PROC
 EXTERN ZwCallbackReturn:PROC
 EXTERN RtlRaiseStatus:PROC
+EXTERN LdrpTryWow64Exception:PROC
 
 .code
 
@@ -196,12 +197,17 @@ PUBLIC KiUserExceptionDispatcher
     cld
 
     /* Dispatch the exception */
+    push rcx
+    push rdx
     call RtlDispatchException
+    pop rdx
+    pop rcx
 
     /* Check for success */
     or al, al
-    jz RaiseException
+    jz TryWow64
 
+Fine:
     /* We're fine, continue execution */
     lea rcx, [rsp] /* ContextRecord */
     mov dl, 0 /* TestAlert */
@@ -209,6 +215,12 @@ PUBLIC KiUserExceptionDispatcher
 
     /* Exit */
     jmp Exit
+    
+TryWow64:
+    call LdrpTryWow64Exception
+
+    or al, al
+    jnz Fine
 
 RaiseException:
 

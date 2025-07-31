@@ -2421,9 +2421,17 @@ WINAPI
 GetSystemWow64DirectoryW(OUT LPWSTR lpBuffer,
                          IN UINT uSize)
 {
-#ifdef _WIN64
-    UNIMPLEMENTED;
-    return 0;
+#if defined(_WIN64) || defined(BUILD_WOW6432)
+    const WCHAR WowDir[] = L"C:\\ReactOS\\SysWOW64";
+
+    /* FIXME */
+    if (uSize < sizeof(WowDir) / sizeof(WCHAR))
+    {
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return 0;
+    }
+    RtlCopyMemory(lpBuffer, WowDir, sizeof(WowDir));
+    return sizeof(WowDir) / sizeof(WCHAR) - 1;
 #else
     SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
     return 0;
@@ -2438,9 +2446,17 @@ WINAPI
 GetSystemWow64DirectoryA(OUT LPSTR lpBuffer,
                          IN UINT uSize)
 {
-#ifdef _WIN64
-    UNIMPLEMENTED;
-    return 0;
+#if defined(_WIN64) || defined(BUILD_WOW6432)
+    const char WowDir[] = "C:\\ReactOS\\SysWOW64";
+
+    /* FIXME */
+    if (uSize < sizeof(WowDir))
+    {
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return 0;
+    }
+    RtlCopyMemory(lpBuffer, WowDir, sizeof(WowDir));
+    return sizeof(WowDir) - 1;
 #else
     SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
     return 0;
