@@ -52,6 +52,7 @@ else()
 endif()
 
 if(ARCH STREQUAL "i386")
+    list(APPEND ASM_SOURCE wow64/gsfuncs.S)
     list(APPEND SOURCE wow64/memory.c)
 endif()
 
