@@ -203,7 +203,7 @@ struct thunkCode
 };
 #pragma pack(pop)
 
-#elif defined(_M_ARM)
+#elif defined(_M_ARM) || (_M_ARM64)
 
 #pragma pack(push,4)
 struct thunkCode
