@@ -34,7 +34,7 @@ MACRO(CREATE_ALIAS, alias, target)
     CREATE_ALIAS2 &alias, &target
 ENDM
 
-#elif defined(_M_ARM) || defined(_M_ARM64))
+#elif defined(_M_ARM) || defined(_M_ARM64)
 
 #include <kxarm.h>
 
