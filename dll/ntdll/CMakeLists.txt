@@ -1,7 +1,11 @@
 
 add_subdirectory(nt_0600)
 
-spec2def(ntdll.dll def/ntdll.spec ADD_IMPORTLIB)
+if(SARCH STREQUAL "wow64")
+    spec2def(ntdll.dll def/ntdllwow.spec ADD_IMPORTLIB)
+else()
+    spec2def(ntdll.dll def/ntdll.spec ADD_IMPORTLIB)
+endif()
 
 # Embed RTC libs
 if (STACK_PROTECTOR)
@@ -47,6 +51,11 @@ else()
     list(APPEND SOURCE dispatch/dispatch.c)
 endif()
 
+if(ARCH STREQUAL "i386")
+    list(APPEND ASM_SOURCE wow64/gsfuncs.S)
+    list(APPEND SOURCE wow64/memory.c)
+endif()
+
 add_asm_files(ntdll_asm ${ASM_SOURCE})
 
 list(APPEND PCH_SKIP_SOURCE
@@ -65,7 +74,7 @@ set_module_type(ntdll win32dll ENTRYPOINT 0)
 set_subsystem(ntdll console)
 ################# END  HACK #################
 
-target_link_libraries(ntdll etwtrace csrlib rtl rtl_um rtl_vista ntdllsys libcntpr uuid ${PSEH_LIB})
+target_link_libraries(ntdll ntdll_vista_static etwtrace csrlib rtl rtl_um rtl_vista ntdllsys libcntpr uuid ${PSEH_LIB})
 if(DLL_EXPORT_VERSION GREATER_EQUAL 0x600)
     target_link_libraries(ntdll cryptlib)
 endif()

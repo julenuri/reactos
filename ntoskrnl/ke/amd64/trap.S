@@ -23,8 +23,9 @@ EXTERN KiDpcInterruptHandler:PROC
 EXTERN PsConvertToGuiThread:PROC
 EXTERN MmCreateKernelStack:PROC
 EXTERN MmDeleteKernelStack:PROC
-
 EXTERN KdSetOwedBreakpoints:PROC
+EXTERN KeAcquireSpinLockAtDpcLevel:PROC
+EXTERN KeReleaseSpinLockFromDpcLevel:PROC
 
 
 /* Helper Macros *************************************************************/
@@ -744,11 +745,13 @@ FUNC KiInterruptDispatch
     movzx rax, byte ptr [rbx + KINTERRUPT_SynchronizeIrql]
     mov cr8, rax
 
+    /* Enable interrupts */
+    sti
+
 #ifdef CONFIG_SMP
     /* Acquire interrupt lock */
-    mov r8, [rbx + KINTERRUPT_ActualLock]
-
-    //KxAcquireSpinLock(Interrupt->ActualLock);
+    mov rcx, [rbx + KINTERRUPT_ActualLock]
+    call KeAcquireSpinLockAtDpcLevel
 #endif
 
     /* Call the ISR */
@@ -758,10 +761,12 @@ FUNC KiInterruptDispatch
 
 #ifdef CONFIG_SMP
     /* Release interrupt lock */
-    //KxReleaseSpinLock(Interrupt->ActualLock);
+    mov rcx, [rbx + KINTERRUPT_ActualLock]
+    call KeReleaseSpinLockFromDpcLevel
 #endif
 
-    /* Go back to old irql */
+    /* Disable interrupts and go back to old irql */
+    cli
     movzx rax, byte ptr [rbp + KTRAP_FRAME_PreviousIrql]
     mov cr8, rax
 
@@ -824,6 +829,13 @@ PUBLIC KiSystemCallEntry64
     mov [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_Rcx], r10
     mov [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_EFlags], r11
     mov [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_Rbp], rbp
+
+    /* Set the trapframe cs register to a fixed 64-bit, usermode selector
+       (when returning with a sysret cs is loaded with this selector anyway,
+       but we have to make sure we're not writing garbage/outdated values to cs
+       when starting user APCs) */
+    mov rax, HEX(33)
+    mov [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_SegCs], rax
 
     /* Store user stack pointer in the trap frame */
     mov rax, gs:[PcUserRsp]

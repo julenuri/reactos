@@ -333,8 +333,10 @@ HRESULT WINAPI ILLoadFromStream (IStream * pStream, LPITEMIDLIST * ppPidl)
     if (*ppPidl && !pcheck(*ppPidl))
     {
         WARN("Check failed\n");
+#ifndef __REACTOS__ /* We don't know all pidl formats, must allow loading unknown */
         SHFree(*ppPidl);
         *ppPidl = NULL;
+#endif
     }
 
     IStream_Release (pStream);
@@ -1621,7 +1623,14 @@ HRESULT WINAPI SHGetNameFromIDList(PCIDLIST_ABSOLUTE pidl, SIGDN sigdnName, PWST
     return ret;
 }
 
-#ifndef __REACTOS__
+/*************************************************************************
+ * SHGetItemFromDataObject          [SHELL32.@]
+ */
+HRESULT WINAPI SHGetItemFromDataObject(IDataObject *pdtobj, DATAOBJ_GET_ITEM_FLAGS dwFlags,
+                                       REFIID riid, void **ppv)
+{
+    return E_NOTIMPL; // FIXME
+}
 
 /*************************************************************************
  * SHGetIDListFromObject             [SHELL32.@]
@@ -1699,8 +1708,6 @@ HRESULT WINAPI SHGetIDListFromObject(IUnknown *punk, PIDLIST_ABSOLUTE *ppidl)
     return ret;
 }
 
-#endif /* !__REACTOS__ */
-
 /**************************************************************************
  *
  *        internal functions
@@ -1756,30 +1763,29 @@ LPITEMIDLIST _ILCreateDesktop(void)
 LPITEMIDLIST _ILCreateMyComputer(void)
 {
     TRACE("()\n");
-    return _ILCreateGuid(PT_GUID, &CLSID_MyComputer);
+    return _ILCreateGuid(PT_DESKTOP_REGITEM, &CLSID_MyComputer);
 }
 
 LPITEMIDLIST _ILCreateMyDocuments(void)
 {
     TRACE("()\n");
-    return _ILCreateGuid(PT_GUID, &CLSID_MyDocuments);
+    return _ILCreateGuid(PT_DESKTOP_REGITEM, &CLSID_MyDocuments);
 }
 
 LPITEMIDLIST _ILCreateIExplore(void)
 {
     TRACE("()\n");
-    return _ILCreateGuid(PT_GUID, &CLSID_Internet);
+    return _ILCreateGuid(PT_DESKTOP_REGITEM, &CLSID_Internet);
 }
 
 LPITEMIDLIST _ILCreateControlPanel(void)
 {
-    LPITEMIDLIST parent = _ILCreateGuid(PT_GUID, &CLSID_MyComputer), ret = NULL;
+    LPITEMIDLIST parent = _ILCreateMyComputer(), ret = NULL;
 
     TRACE("()\n");
     if (parent)
     {
-        LPITEMIDLIST cpl = _ILCreateGuid(PT_SHELLEXT, &CLSID_ControlPanel);
-
+        LPITEMIDLIST cpl = _ILCreateGuid(PT_COMPUTER_REGITEM, &CLSID_ControlPanel);
         if (cpl)
         {
             ret = ILCombine(parent, cpl);
@@ -1820,13 +1826,13 @@ LPITEMIDLIST _ILCreatePrinters(void)
 LPITEMIDLIST _ILCreateNetwork(void)
 {
     TRACE("()\n");
-    return _ILCreateGuid(PT_GUID, &CLSID_NetworkPlaces);
+    return _ILCreateGuid(PT_DESKTOP_REGITEM, &CLSID_NetworkPlaces);
 }
 
 LPITEMIDLIST _ILCreateBitBucket(void)
 {
     TRACE("()\n");
-    return _ILCreateGuid(PT_GUID, &CLSID_RecycleBin);
+    return _ILCreateGuid(PT_DESKTOP_REGITEM, &CLSID_RecycleBin);
 }
 
 LPITEMIDLIST _ILCreateAdminTools(void)
@@ -2030,11 +2036,9 @@ DWORD _ILGetDrive(LPCITEMIDLIST pidl, LPWSTR pOut, UINT uSize)
  */
 BOOL _ILIsUnicode(LPCITEMIDLIST pidl)
 {
-    LPPIDLDATA lpPData = _ILGetDataPointer(pidl);
-
     TRACE("(%p)\n",pidl);
 
-    return (pidl && lpPData && PT_VALUEW == lpPData->type);
+    return (_ILGetFSType(pidl) & PT_FS_UNICODE_FLAG) != 0;
 }
 
 BOOL _ILIsDesktop(LPCITEMIDLIST pidl)
@@ -2052,28 +2056,6 @@ BOOL _ILIsMyDocuments(LPCITEMIDLIST pidl)
 
     if (iid)
         return IsEqualIID(iid, &CLSID_MyDocuments);
-    return FALSE;
-}
-
-BOOL _ILIsNetHood(LPCITEMIDLIST pidl)
-{
-    IID *iid = _ILGetGUIDPointer(pidl);
-
-    TRACE("(%p)\n", pidl);
-
-    if (iid)
-        return IsEqualIID(iid, &CLSID_NetworkPlaces);
-    return FALSE;
-}
-
-BOOL _ILIsControlPanel(LPCITEMIDLIST pidl)
-{
-    IID *iid = _ILGetGUIDPointer(pidl);
-
-    TRACE("(%p)\n", pidl);
-
-    if (iid)
-        return IsEqualIID(iid, &CLSID_ControlPanel);
     return FALSE;
 }
 
@@ -2112,32 +2094,22 @@ BOOL _ILIsSpecialFolder (LPCITEMIDLIST pidl)
 
 BOOL _ILIsDrive(LPCITEMIDLIST pidl)
 {
-    LPPIDLDATA lpPData = _ILGetDataPointer(pidl);
-
-    TRACE("(%p)\n",pidl);
-
-    return (pidl && lpPData && (PT_DRIVE == lpPData->type ||
-                    PT_DRIVE1 == lpPData->type ||
-                    PT_DRIVE2 == lpPData->type ||
-                    PT_DRIVE3 == lpPData->type));
+    const BYTE type = _ILGetType(pidl);
+    const BYTE fldrtype = (PT_DRIVE & PT_FOLDERTYPEMASK);
+    return (type & PT_FOLDERTYPEMASK) == fldrtype && type != PT_COMPUTER_REGITEM;
 }
 
 BOOL _ILIsFolder(LPCITEMIDLIST pidl)
 {
-    LPPIDLDATA lpPData = _ILGetDataPointer(pidl);
-
-    TRACE("(%p)\n",pidl);
-
-    return (pidl && lpPData && (PT_FOLDER == lpPData->type || PT_FOLDER1 == lpPData->type));
+    /* A folder or a simple PT_FS with a child */
+    const BYTE type = _ILGetFSType(pidl);
+    return (type & PT_FS_FOLDER_FLAG) != 0 || (type == PT_FS && ILGetNext(pidl));
 }
 
 BOOL _ILIsValue(LPCITEMIDLIST pidl)
 {
-    LPPIDLDATA lpPData = _ILGetDataPointer(pidl);
-
-    TRACE("(%p)\n",pidl);
-
-    return (pidl && lpPData && PT_VALUE == lpPData->type);
+    const BYTE type = _ILGetFSType(pidl);
+    return type && !(type & PT_FS_FOLDER_FLAG);
 }
 
 BOOL _ILIsCPanelStruct(LPCITEMIDLIST pidl)
@@ -2281,6 +2253,9 @@ static LPWSTR _ILGetTextPointerW(LPCITEMIDLIST pidl)
     if (!pdata)
         return NULL;
 
+    if (_ILGetFSType(pidl) & PT_FS_UNICODE_FLAG)
+        return (LPWSTR)pdata->u.file.szNames;
+
     switch (pdata->type)
     {
     case PT_GUID:
@@ -2295,9 +2270,6 @@ static LPWSTR _ILGetTextPointerW(LPCITEMIDLIST pidl)
         /*return (LPSTR)&(pdata->u.drive.szDriveName);*/
         return NULL;
 
-    case PT_FOLDER:
-    case PT_FOLDER1:
-    case PT_VALUE:
     case PT_IESPECIAL1:
     case PT_IESPECIAL2:
         /*return (LPSTR)&(pdata->u.file.szNames);*/
@@ -2310,9 +2282,6 @@ static LPWSTR _ILGetTextPointerW(LPCITEMIDLIST pidl)
     case PT_SHARE:
         /*return (LPSTR)&(pdata->u.network.szNames);*/
         return NULL;
-
-    case PT_VALUEW:
-        return (LPWSTR)pdata->u.file.szNames;
 
 #ifdef __REACTOS__ /* r54423 */
     case PT_CPLAPPLET:
@@ -2332,10 +2301,17 @@ LPSTR _ILGetTextPointer(LPCITEMIDLIST pidl)
 {
     /* TRACE(pidl,"(pidl%p)\n", pidl);*/
 
+    PIDLTYPE type;
     LPPIDLDATA pdata = _ILGetDataPointer(pidl);
-
     if (!pdata)
         return NULL;
+
+    type = _ILGetFSType(pidl);
+    if (type && !(type & PT_FS_UNICODE_FLAG))
+        return pdata->u.file.szNames;
+
+    if (_ILIsDrive(pidl))
+        return pdata->u.drive.szDriveName;
 
     switch (pdata->type)
     {
@@ -2344,15 +2320,6 @@ LPSTR _ILGetTextPointer(LPCITEMIDLIST pidl)
     case PT_YAGUID:
         return NULL;
 
-    case PT_DRIVE:
-    case PT_DRIVE1:
-    case PT_DRIVE2:
-    case PT_DRIVE3:
-        return pdata->u.drive.szDriveName;
-
-    case PT_FOLDER:
-    case PT_FOLDER1:
-    case PT_VALUE:
     case PT_IESPECIAL1:
     case PT_IESPECIAL2:
         return pdata->u.file.szNames;
@@ -2375,15 +2342,18 @@ static LPSTR _ILGetSTextPointer(LPCITEMIDLIST pidl)
 {
     /* TRACE(pidl,"(pidl%p)\n", pidl); */
 
+    PIDLTYPE type;
     LPPIDLDATA pdata =_ILGetDataPointer(pidl);
-
     if (!pdata)
         return NULL;
 
-    switch (pdata->type)
+    type = pdata->type;
+    if (_ILGetFSType(pidl) && !(type & PT_FS_UNICODE_FLAG))
+        type = PT_FS;
+
+    switch (type)
     {
-    case PT_FOLDER:
-    case PT_VALUE:
+    case PT_FS:
     case PT_IESPECIAL1:
     case PT_IESPECIAL2:
         return pdata->u.file.szNames + strlen (pdata->u.file.szNames) + 1;
@@ -2439,7 +2409,7 @@ FileStructW* _ILGetFileStructW(LPCITEMIDLIST pidl) {
     FileStructW *pFileStructW;
     WORD cbOffset;
     
-    if (!(_ILIsValue(pidl) || _ILIsFolder(pidl)))
+    if (!_ILIsFolderOrFile(pidl))
         return NULL;
 
     cbOffset = *(const WORD *)((const BYTE *)pidl + pidl->mkid.cb - sizeof(WORD));
@@ -2479,48 +2449,12 @@ FileStructW* _ILGetFileStructW(LPCITEMIDLIST pidl) {
  */
 BOOL _ILGetFileDateTime(LPCITEMIDLIST pidl, FILETIME *pFt)
 {
-    LPPIDLDATA pdata = _ILGetDataPointer(pidl);
-
-    if (!pdata)
-        return FALSE;
-
-    switch (pdata->type)
+    if (_ILGetFSType(pidl) > PT_FS) /* Only non-simple FS items have a date */
     {
-    case PT_FOLDER:
-    case PT_VALUE:
-        DosDateTimeToFileTime(pdata->u.file.uFileDate, pdata->u.file.uFileTime, pFt);
-        break;
-    default:
-        return FALSE;
+        LPPIDLDATA pdata = _ILGetDataPointer(pidl);
+        return DosDateTimeToFileTime(pdata->u.file.uFileDate, pdata->u.file.uFileTime, pFt);
     }
-    return TRUE;
-}
-
-BOOL _ILGetFileDate(LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize)
-{
-    FILETIME ft,lft;
-    SYSTEMTIME time;
-    BOOL ret;
-
-    if (_ILGetFileDateTime( pidl, &ft ))
-    {
-        FileTimeToLocalFileTime(&ft, &lft);
-        FileTimeToSystemTime (&lft, &time);
-
-        ret = GetDateFormatW(LOCALE_USER_DEFAULT, DATE_SHORTDATE, &time, NULL, pOut, uOutSize);
-        if (ret)
-        {
-            /* Append space + time without seconds */
-            pOut[ret - 1] = L' ';
-            GetTimeFormatW(LOCALE_USER_DEFAULT, TIME_NOSECONDS, &time, NULL, &pOut[ret], uOutSize - ret);
-        }
-    }
-    else
-    {
-        pOut[0] = UNICODE_NULL;
-        ret = FALSE;
-    }
-    return ret;
+    return FALSE;
 }
 
 /*************************************************************************
@@ -2543,15 +2477,13 @@ BOOL _ILGetFileDate(LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize)
 DWORD _ILGetFileSize(LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize)
 {
     LPPIDLDATA pdata = _ILGetDataPointer(pidl);
-    DWORD dwSize;
-
     if (!pdata)
         return 0;
 
-    switch (pdata->type)
+    if (_ILGetFSType(pidl) & PT_FS_FILE_FLAG)
     {
-    case PT_VALUE:
-        dwSize = pdata->u.file.dwFileSize;
+        /* FIXME: Handle INVALID_FILE_SIZE (get size from disk) */
+        DWORD dwSize = pdata->u.file.dwFileSize;
         if (pOut)
             StrFormatKBSizeW(dwSize, pOut, uOutSize);
         return dwSize;
@@ -2610,24 +2542,13 @@ BOOL _ILGetExtension(LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize)
  */
 DWORD _ILGetFileAttributes(LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize)
 {
-    LPPIDLDATA pData = _ILGetDataPointer(pidl);
-    WORD wAttrib = 0;
-    int i;
+    DWORD wAttrib = 0;
+    if (_ILGetFSType(pidl))
+        wAttrib = _ILGetDataPointer(pidl)->u.file.uFileAttribs;
 
-    if (!pData)
-        return 0;
-
-    switch(pData->type)
+    if (uOutSize >= 6)
     {
-    case PT_FOLDER:
-    case PT_VALUE:
-        wAttrib = pData->u.file.uFileAttribs;
-        break;
-    }
-
-    if(uOutSize >= 6)
-    {
-        i=0;
+        UINT i = 0;
         if(wAttrib & FILE_ATTRIBUTE_READONLY)
             pOut[i++] = L'R';
         if(wAttrib & FILE_ATTRIBUTE_HIDDEN)

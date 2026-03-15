@@ -583,7 +583,7 @@
 #define SECTION_MAP_EXECUTE 8
 #define SECTION_ALL_ACCESS 0xf001f
 #define WRITE_WATCH_FLAG_RESET 0x01
-#define MESSAGE_RESOURCE_UNICODE 1
+
 #define RTL_CRITSECT_TYPE 0
 #define RTL_RESOURCE_TYPE 1
 
@@ -952,9 +952,7 @@
 #define DLL_PROCESS_ATTACH    1
 #define DLL_THREAD_ATTACH    2
 #define DLL_THREAD_DETACH    3
-#ifdef __WINESRC__
-#define DLL_WINE_PREATTACH    8 /* Never called, but defined for compatibility with Wine source */
-#endif
+
 #define TAPE_ABSOLUTE_POSITION 0
 #define TAPE_LOGICAL_POSITION 1
 #define TAPE_PSEUDO_LOGICAL_POSITION 2
@@ -2650,6 +2648,8 @@ typedef struct _MESSAGE_RESOURCE_ENTRY {
   BYTE Text[1];
 } MESSAGE_RESOURCE_ENTRY, *PMESSAGE_RESOURCE_ENTRY;
 
+#define MESSAGE_RESOURCE_UNICODE 1
+
 typedef struct _MESSAGE_RESOURCE_BLOCK {
   DWORD LowId;
   DWORD HighId;
@@ -2793,9 +2793,17 @@ typedef struct _RTL_CRITICAL_SECTION_DEBUG {
   LIST_ENTRY ProcessLocksList;
   DWORD EntryCount;
   DWORD ContentionCount;
-  DWORD Flags;
-  WORD CreatorBackTraceIndexHigh;
-  WORD SpareWORD;
+  union
+  {
+    DWORD_PTR WineDebugString;
+    DWORD_PTR Spare[1];
+    struct
+    {
+      DWORD Flags;
+      WORD CreatorBackTraceIndexHigh;
+      WORD SpareWORD;
+    };
+  };
 } RTL_CRITICAL_SECTION_DEBUG, *PRTL_CRITICAL_SECTION_DEBUG, RTL_RESOURCE_DEBUG, *PRTL_RESOURCE_DEBUG;
 
 #include "pshpack8.h"
@@ -4480,7 +4488,11 @@ DbgRaiseAssertionFailure(VOID)
 typedef struct _TP_POOL TP_POOL, *PTP_POOL;
 typedef struct _TP_WORK TP_WORK, *PTP_WORK;
 typedef struct _TP_CALLBACK_INSTANCE TP_CALLBACK_INSTANCE, *PTP_CALLBACK_INSTANCE;
+typedef struct _TP_TIMER TP_TIMER, *PTP_TIMER;
+typedef struct _TP_WAIT TP_WAIT, *PTP_WAIT;
+typedef struct _TP_IO TP_IO, *PTP_IO;
 
+typedef DWORD TP_WAIT_RESULT;
 typedef DWORD TP_VERSION, *PTP_VERSION;
 
 typedef enum _TP_CALLBACK_PRIORITY {
@@ -4490,6 +4502,12 @@ typedef enum _TP_CALLBACK_PRIORITY {
   TP_CALLBACK_PRIORITY_INVALID,
   TP_CALLBACK_PRIORITY_COUNT = TP_CALLBACK_PRIORITY_INVALID
 } TP_CALLBACK_PRIORITY;
+
+typedef struct _TP_POOL_STACK_INFORMATION
+{
+  SIZE_T StackReserve;
+  SIZE_T StackCommit;
+} TP_POOL_STACK_INFORMATION,*PTP_POOL_STACK_INFORMATION;
 
 typedef VOID
 (NTAPI *PTP_WORK_CALLBACK)(
@@ -4508,6 +4526,9 @@ typedef VOID
 (NTAPI *PTP_CLEANUP_GROUP_CANCEL_CALLBACK)(
   _Inout_opt_ PVOID ObjectContext,
   _Inout_opt_ PVOID CleanupContext);
+
+typedef VOID (NTAPI *PTP_TIMER_CALLBACK)(PTP_CALLBACK_INSTANCE,PVOID,PTP_TIMER);
+typedef VOID (NTAPI *PTP_WAIT_CALLBACK)(PTP_CALLBACK_INSTANCE,PVOID,PTP_WAIT,TP_WAIT_RESULT);
 
 #if (_WIN32_WINNT >= _WIN32_WINNT_WIN7)
 typedef struct _TP_CALLBACK_ENVIRON_V3 {

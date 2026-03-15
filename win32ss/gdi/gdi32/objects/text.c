@@ -70,7 +70,7 @@ TextOutW(
     _In_reads_(cchString) LPCWSTR lpString,
     _In_ INT cchString)
 {
-    return ExtTextOutW(hdc, nXStart, nYStart, 0, NULL, (LPWSTR)lpString, cchString, NULL);
+    return ExtTextOutW(hdc, nXStart, nYStart, 0, NULL, lpString, cchString, NULL);
 }
 
 
@@ -622,7 +622,7 @@ ExtTextOutW(
                     pgO->ulForegroundClr = pdcattr->ulForegroundClr;
                     pgO->ulBackgroundClr = pdcattr->ulBackgroundClr;
                     pgO->lBkMode         = pdcattr->lBkMode == OPAQUE ? OPAQUE : TRANSPARENT;
-                    pgO->hlfntNew        = pdcattr->hlfntNew;
+                    pgO->hlfntNew        = WOW64_CAST_TO_HANDLE(pdcattr->hlfntNew);
                     pgO->flTextAlign     = pdcattr->flTextAlign;
                     pgO->ptlViewportOrg  = pdcattr->ptlViewportOrg;
 
@@ -647,10 +647,10 @@ ExtTextOutW(
                             x,
                             y,
                             fuOptions,
-                            (LPRECT)lprc,
-                            (LPWSTR)lpString,
+                            lprc,
+                            lpString,
                             cwc,
-                            (LPINT)lpDx,
+                            lpDx,
                             0);
 }
 

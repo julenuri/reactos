@@ -75,4 +75,8 @@
 /* Virtual DOS Machines (VDM) Support Definitions */
 #include "include/vdm.h"
 
+/* WOW64 */
+#include "../../ntdll/wow64/ntdll32.h"
+#include "../../wow64/wine/struct32.h"
+
 #endif /* __K32_H */

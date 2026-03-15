@@ -39,6 +39,7 @@
 
 HANDLE ProcessHeap;
 SETUPDATA SetupData;
+static BOOLEAN IsUnattendedSetup;
 
 /* The partition where to perform the installation */
 PPARTENTRY InstallPartition = NULL;
@@ -79,29 +80,50 @@ CenterWindow(HWND hWnd)
                  SWP_NOSIZE);
 }
 
+/**
+ * @brief
+ * Create a bold font derived from the provided font.
+ **/
 static HFONT
-CreateTitleFont(VOID)
+CreateBoldFont(
+    _In_opt_ HFONT hOrigFont,
+    _In_opt_ INT PointSize)
 {
-    NONCLIENTMETRICS ncm;
-    LOGFONT LogFont;
-    HDC hdc;
-    INT FontSize;
-    HFONT hFont;
+    LOGFONTW lf = {0};
 
-    ncm.cbSize = sizeof(NONCLIENTMETRICS);
-    SystemParametersInfo(SPI_GETNONCLIENTMETRICS, 0, &ncm, 0);
+    if (hOrigFont)
+    {
+        GetObjectW(hOrigFont, sizeof(lf), &lf);
+    }
+    else
+    {
+        NONCLIENTMETRICSW ncm;
+        ncm.cbSize = sizeof(ncm);
+        SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, 0, &ncm, 0);
+        lf = ncm.lfMessageFont;
+    }
 
-    LogFont = ncm.lfMessageFont;
-    LogFont.lfWeight = FW_BOLD;
-    _tcscpy(LogFont.lfFaceName, _T("MS Shell Dlg"));
+    /* Make the font bold, keeping the other attributes */
+    lf.lfWeight = FW_BOLD;
 
-    hdc = GetDC(NULL);
-    FontSize = 12;
-    LogFont.lfHeight = 0 - GetDeviceCaps (hdc, LOGPIXELSY) * FontSize / 72;
-    hFont = CreateFontIndirect(&LogFont);
-    ReleaseDC(NULL, hdc);
+    /* Determine the font height (logical units) if necessary */
+    if (PointSize)
+    {
+        HDC hdc = GetDC(NULL);
+        lf.lfHeight = -MulDiv(PointSize, GetDeviceCaps(hdc, LOGPIXELSY), 72);
+        // lf.lfWidth = 0;
+        ReleaseDC(NULL, hdc);
+    }
 
-    return hFont;
+    return CreateFontIndirect(&lf);
+}
+
+static inline HFONT
+CreateTitleFont(
+    _In_opt_ HFONT hOrigFont)
+{
+    /* Title font is 12pt bold */
+    return CreateBoldFont(hOrigFont, 12);
 }
 
 INT
@@ -307,11 +329,13 @@ StartDlgProc(
             SetWindowLongPtrW(hwndDlg, GWLP_USERDATA, (DWORD_PTR)pSetupData);
 
             /* Set title font */
-            SendDlgItemMessage(hwndDlg,
-                               IDC_STARTTITLE,
-                               WM_SETFONT,
-                               (WPARAM)pSetupData->hTitleFont,
-                               (LPARAM)TRUE);
+            SetDlgItemFont(hwndDlg, IDC_STARTTITLE, pSetupData->hTitleFont, TRUE);
+
+            // TEMPTEMP: Set the ReactOS-Alpha information in bold.
+            // TODO: Remove once we reach 0.5/Beta :)
+            SetDlgItemFont(hwndDlg, IDC_WARNTEXT1, pSetupData->hBoldFont, TRUE);
+            SetDlgItemFont(hwndDlg, IDC_WARNTEXT2, pSetupData->hBoldFont, TRUE);
+            SetDlgItemFont(hwndDlg, IDC_WARNTEXT3, pSetupData->hBoldFont, TRUE);
 
             /* Center the wizard window */
             CenterWindow(GetParent(hwndDlg));
@@ -325,8 +349,21 @@ StartDlgProc(
             switch (lpnm->code)
             {
                 case PSN_SETACTIVE:
+                {
+                    /* Only "Next" and "Cancel" for the first page and hide "Back" */
                     PropSheet_SetWizButtons(GetParent(hwndDlg), PSWIZB_NEXT);
+                    // PropSheet_ShowWizButtons(GetParent(hwndDlg), 0, PSWIZB_BACK);
+                    ShowDlgItem(GetParent(hwndDlg), ID_WIZBACK, SW_HIDE);
                     break;
+                }
+
+                case PSN_KILLACTIVE:
+                {
+                    /* Show "Back" button */
+                    // PropSheet_ShowWizButtons(GetParent(hwndDlg), PSWIZB_BACK, PSWIZB_BACK);
+                    ShowDlgItem(GetParent(hwndDlg), ID_WIZBACK, SW_SHOW);
+                    break;
+                }
 
                 default:
                     break;
@@ -362,11 +399,15 @@ TypeDlgProc(
             pSetupData = (PSETUPDATA)((LPPROPSHEETPAGE)lParam)->lParam;
             SetWindowLongPtrW(hwndDlg, GWLP_USERDATA, (DWORD_PTR)pSetupData);
 
-            /* Check the 'install' radio button */
+            /* Set the options in bold */
+            SetDlgItemFont(hwndDlg, IDC_INSTALL, pSetupData->hBoldFont, TRUE);
+            SetDlgItemFont(hwndDlg, IDC_UPDATE, pSetupData->hBoldFont, TRUE);
+
+            /* Check the "Install" radio button */
             CheckDlgButton(hwndDlg, IDC_INSTALL, BST_CHECKED);
 
             /*
-             * Enable the 'update' radio button and text only if we have
+             * Enable the "Update" radio button and text only if we have
              * available NT installations, otherwise disable them.
              */
             if (pSetupData->NtOsInstallsList &&
@@ -2282,11 +2323,7 @@ RestartDlgProc(
             SetWindowLongPtrW(hwndDlg, GWLP_USERDATA, (DWORD_PTR)pSetupData);
 
             /* Set title font */
-            SendDlgItemMessage(hwndDlg,
-                               IDC_FINISHTITLE,
-                               WM_SETFONT,
-                               (WPARAM)pSetupData->hTitleFont,
-                               (LPARAM)TRUE);
+            SetDlgItemFont(hwndDlg, IDC_FINISHTITLE, pSetupData->hTitleFont, TRUE);
             break;
 
         case WM_TIMER:
@@ -2762,7 +2799,6 @@ HotkeyThread(LPVOID Parameter)
     DPRINT("HotkeyThread start\n");
 
     hotkey = GlobalAddAtomW(L"Setup Shift+F10 Hotkey");
-
     if (!RegisterHotKey(NULL, hotkey, MOD_SHIFT, VK_F10))
         DPRINT1("RegisterHotKey failed with %lu\n", GetLastError());
 
@@ -2770,11 +2806,12 @@ HotkeyThread(LPVOID Parameter)
     {
         if (msg.hwnd == NULL && msg.message == WM_HOTKEY && msg.wParam == hotkey)
         {
+            WCHAR CmdLine[] = L"cmd.exe"; // CreateProcess can modify this buffer.
             STARTUPINFOW si = { sizeof(si) };
             PROCESS_INFORMATION pi;
 
-            if (CreateProcessW(L"cmd.exe",
-                               NULL,
+            if (CreateProcessW(NULL,
+                               CmdLine,
                                NULL,
                                NULL,
                                FALSE,
@@ -2844,8 +2881,7 @@ _tWinMain(HINSTANCE hInst,
     }
 
     /* Retrieve any supplemental options from the unattend file */
-    CheckUnattendedSetup(&SetupData.USetupData);
-    SetupData.bUnattend = IsUnattendedSetup; // FIXME :-)
+    SetupData.bUnattend = IsUnattendedSetup = CheckUnattendedSetup(&SetupData.USetupData);
 
     /* Load extra setup data (HW lists etc...) */
     if (!LoadSetupData(&SetupData))
@@ -2864,8 +2900,9 @@ _tWinMain(HINSTANCE hInst,
     // RegisterTreeListClass(hInst);
     TreeListRegister(hInst);
 
-    /* Create title font */
-    SetupData.hTitleFont = CreateTitleFont();
+    /* Create the title and bold fonts */
+    SetupData.hTitleFont = CreateTitleFont(NULL);
+    SetupData.hBoldFont  = CreateBoldFont(NULL, 0);
 
     if (!SetupData.bUnattend)
     {
@@ -2893,8 +2930,8 @@ _tWinMain(HINSTANCE hInst,
         /* Create the upgrade/repair selection page */
         psp.dwSize = sizeof(PROPSHEETPAGE);
         psp.dwFlags = PSP_DEFAULT | PSP_USEHEADERTITLE | PSP_USEHEADERSUBTITLE;
-        psp.pszHeaderTitle = MAKEINTRESOURCEW(IDS_TYPETITLE);
-        psp.pszHeaderSubTitle = MAKEINTRESOURCEW(IDS_TYPESUBTITLE);
+        psp.pszHeaderTitle = MAKEINTRESOURCEW(IDS_UPDATETITLE);
+        psp.pszHeaderSubTitle = MAKEINTRESOURCEW(IDS_UPDATESUBTITLE);
         psp.hInstance = hInst;
         psp.lParam = (LPARAM)&SetupData;
         psp.pfnDlgProc = UpgradeRepairDlgProc;
@@ -2976,8 +3013,10 @@ _tWinMain(HINSTANCE hInst,
     CloseHandle(SetupData.hHaltInstallEvent);
     SetupData.hHaltInstallEvent = NULL;
 
+    if (SetupData.hBoldFont)
+        DeleteFont(SetupData.hBoldFont);
     if (SetupData.hTitleFont)
-        DeleteObject(SetupData.hTitleFont);
+        DeleteFont(SetupData.hTitleFont);
 
     /* Unregister the TreeList control */
     // UnregisterTreeListClass(hInst);

@@ -44,6 +44,9 @@ BOOL SIC_Initialize(void);
 void SIC_Destroy(void) DECLSPEC_HIDDEN;
 BOOL PidlToSicIndex (IShellFolder * sh, LPCITEMIDLIST pidl, BOOL bBigIcon, UINT uFlags, int * pIndex) DECLSPEC_HIDDEN;
 INT SIC_GetIconIndex (LPCWSTR sSourceFile, INT dwSourceIndex, DWORD dwFlags ) DECLSPEC_HIDDEN;
+extern INT ShellLargeIconSize;
+extern INT ShellSmallIconSize;
+extern INT ShellIconBPP;
 
 /* Classes Root */
 HRESULT HCR_GetProgIdKeyOfExtension(PCWSTR szExtension, PHKEY phKey, BOOL AllowFallback);
@@ -73,9 +76,15 @@ BOOL HCR_GetFolderAttributes(LPCITEMIDLIST pidlFolder, LPDWORD dwAttributes) DEC
 HRESULT SHELL32_AssocGetFSDirectoryDescription(PWSTR Buf, UINT cchBuf);
 HRESULT SHELL32_AssocGetFileDescription(PCWSTR Name, PWSTR Buf, UINT cchBuf);
 
-
 DWORD WINAPI ParseFieldA(LPCSTR src, DWORD nField, LPSTR dst, DWORD len) DECLSPEC_HIDDEN;
 DWORD WINAPI ParseFieldW(LPCWSTR src, DWORD nField, LPWSTR dst, DWORD len) DECLSPEC_HIDDEN;
+
+LONG
+PathProcessCommandW(
+    _In_ PCWSTR pszSrc,
+    _Out_writes_opt_(dwBuffSize) PWSTR pszDest,
+    _In_ INT cchDest,
+    _In_ DWORD dwFlags);
 
 /****************************************************************************
  * Class constructors
@@ -139,7 +148,7 @@ void FreeChangeNotifications(void) DECLSPEC_HIDDEN;
 BOOL SHELL_DeleteDirectoryW(HWND hwnd, LPCWSTR pwszDir, BOOL bShowUI);
 BOOL SHELL_ConfirmYesNoW(HWND hWnd, int nKindOfDialog, LPCWSTR szDir);
 
-void WINAPI _InsertMenuItemW (HMENU hmenu, UINT indexMenu, BOOL fByPosition,
+BOOL WINAPI _InsertMenuItemW (HMENU hmenu, UINT indexMenu, BOOL fByPosition,
 			UINT wID, UINT fType, LPCWSTR dwTypeData, UINT fState);
 
 static __inline BOOL SHELL_OsIsUnicode(void)

@@ -208,7 +208,7 @@ ExLockUserBuffer(
     PMDL *OutMdl)
 {
     PMDL Mdl;
-    PAGED_CODE();
+    ASSERT(KeGetCurrentIrql() <= DISPATCH_LEVEL);
 
     *MappedSystemVa = NULL;
     *OutMdl = NULL;
@@ -664,7 +664,13 @@ QSI_DEF(SystemProcessorInformation)
 #else
     Spi->MaximumProcessors = 0;
 #endif
-    Spi->ProcessorFeatureBits = KeFeatureBits;
+
+    /* According to Geoff Chappell, on Win 8.1 x64 / Win 10 x86, where this
+       field is extended to 64 bits, it continues to produce only the low 32
+       bits. For the full value, use SYSTEM_PROCESSOR_FEATURES_INFORMATION.
+       See https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/sysinfo/processor.htm
+     */
+    Spi->ProcessorFeatureBits = (ULONG)KeFeatureBits;
 
     DPRINT("Arch %u Level %u Rev 0x%x\n", Spi->ProcessorArchitecture,
         Spi->ProcessorLevel, Spi->ProcessorRevision);
@@ -2486,6 +2492,36 @@ QSI_DEF(SystemNumaAvailableMemory)
     return STATUS_SUCCESS;
 }
 
+/* Class 62 - Emulation basic information */
+QSI_DEF(SystemEmulationBasicInformation)
+{
+    PSYSTEM_BASIC_INFORMATION Sbi
+        = (PSYSTEM_BASIC_INFORMATION) Buffer;
+
+    *ReqSize = sizeof(SYSTEM_BASIC_INFORMATION);
+
+    /* Check user buffer's size */
+    if (Size != sizeof(SYSTEM_BASIC_INFORMATION))
+    {
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    RtlZeroMemory(Sbi, Size);
+    Sbi->Reserved = 0;
+    Sbi->TimerResolution = KeMaximumIncrement;
+    Sbi->PageSize = PAGE_SIZE;
+    Sbi->NumberOfPhysicalPages = MmNumberOfPhysicalPages;
+    Sbi->LowestPhysicalPageNumber = (ULONG)MmLowestPhysicalPage;
+    Sbi->HighestPhysicalPageNumber = (ULONG)MmHighestPhysicalPage;
+    Sbi->AllocationGranularity = MM_VIRTMEM_GRANULARITY; /* hard coded on Intel? */
+    Sbi->MinimumUserModeAddress = 0x10000; /* Top of 64k */
+    Sbi->MaximumUserModeAddress = (ULONG_PTR)0xFFFFFFFF; /* FIXME */
+    Sbi->ActiveProcessorsAffinityMask = KeActiveProcessors;
+    Sbi->NumberOfProcessors = KeNumberProcessors;
+
+    return STATUS_SUCCESS;
+}
+
 /* Class 64 - Extended handle information */
 QSI_DEF(SystemExtendedHandleInformation)
 {
@@ -2901,7 +2937,7 @@ CallQS[] =
     SI_XX(SystemComPlusPackage),
     SI_QX(SystemNumaAvailableMemory),
     SI_XX(SystemProcessorPowerInformation), /* FIXME: not implemented */
-    SI_XX(SystemEmulationBasicInformation), /* FIXME: not implemented */
+    SI_QX(SystemEmulationBasicInformation),
     SI_XX(SystemEmulationProcessorInformation), /* FIXME: not implemented */
     SI_QX(SystemExtendedHandleInformation),
     SI_XX(SystemLostDelayedWriteInformation), /* FIXME: not implemented */

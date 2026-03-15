@@ -68,11 +68,18 @@ include(sdk/cmake/config.cmake)
 # Compiler flags handling
 include(sdk/cmake/compilerflags.cmake)
 
+# set_wine_module function
+include(sdk/cmake/set_wine_module.cmake)
+
 add_definitions(
     -D__REACTOS__
     # swprintf without count argument is used in most of the codebase
     -D_CRT_NON_CONFORMING_SWPRINTFS
 )
+
+if (ARCH STREQUAL "amd64")
+    add_definitions(-DBUILD_WOW64_ENABLED)
+endif()
 
 # There doesn't seem to be a standard for __FILE__ being relative or absolute, so detect it at runtime.
 file(RELATIVE_PATH _PATH_PREFIX ${REACTOS_BINARY_DIR} ${REACTOS_SOURCE_DIR})
@@ -140,6 +147,10 @@ if(NOT CMAKE_CROSSCOMPILING)
             add_definitions(/D_X86_ /D__i386__ /DWIN32 /D_WINDOWS)
         elseif(ARCH STREQUAL "amd64")
             add_definitions(-D_AMD64_ -D__x86_64__ /DWIN32 -D_WINDOWS)
+        elseif(ARCH STREQUAL "arm")
+            add_definitions(-D__arm__)
+        elseif(ARCH STREQUAL "arm64")
+            add_definitions(-D__aarch64__)
         endif()
         if(MSVC_VERSION GREATER 1699)
             add_definitions(/D_ALLOW_KEYWORD_MACROS)
@@ -153,7 +164,10 @@ if(NOT CMAKE_CROSSCOMPILING)
 
     set(NATIVE_TARGETS asmpp bin2c widl gendib cabman fatten hpp isohybrid mkhive mkisofs obj2bin spec2def geninc mkshelllink utf16le xml2sdb)
     if(NOT MSVC)
-        list(APPEND NATIVE_TARGETS rsym pefixup)
+        list(APPEND NATIVE_TARGETS pefixup)
+        if (ARCH STREQUAL "i386")
+            list(APPEND NATIVE_TARGETS rsym)
+        endif()
     endif()
 
     install(TARGETS ${NATIVE_TARGETS})
@@ -248,11 +262,13 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
             add_definitions(-DSARCH_XBOX)
         elseif(SARCH STREQUAL "pc98")
             add_definitions(-DSARCH_PC98)
+        elseif(SARCH STREQUAL "wow64")
+            add_definitions(-DBUILD_WOW6432)
         endif()
     elseif(ARCH STREQUAL "amd64")
         # clang-cl defines this one for itself
         if (NOT (MSVC AND CMAKE_C_COMPILER_ID STREQUAL "Clang"))
-            add_compile_definitions(_M_AMD64)
+            add_compile_definitions(_M_AMD64 _M_X64)
         endif()
         add_definitions(-D_AMD64_ -D__x86_64__ -D_WIN64)
     elseif(ARCH STREQUAL "arm")

@@ -31,28 +31,28 @@ endif()
 list(APPEND PCH_SKIP_SOURCE
     guid.c)
 
-add_executable(ntoskrnl
-    ${ntoskrnl_asm}
-    ${NTOSKRNL_SOURCE}
-    ${PCH_SKIP_SOURCE}
-    ntoskrnl.rc
-    ${CMAKE_CURRENT_BINARY_DIR}/ntoskrnl.def)
-set_module_type(ntoskrnl kernel)
+if(NOT SARCH STREQUAL "wow64")
+    add_executable(ntoskrnl
+        ${ntoskrnl_asm}
+        ${NTOSKRNL_SOURCE}
+        ${PCH_SKIP_SOURCE}
+        ntoskrnl.rc
+        ${CMAKE_CURRENT_BINARY_DIR}/ntoskrnl.def)
+    set_module_type(ntoskrnl kernel)
 
-source_group(TREE ${REACTOS_SOURCE_DIR}/ntoskrnl PREFIX "Source Files" FILES ${NTOSKRNL_SOURCE})
+    source_group(TREE ${REACTOS_SOURCE_DIR}/ntoskrnl PREFIX "Source Files" FILES ${NTOSKRNL_SOURCE})
 
-target_link_libraries(ntoskrnl cportlib csq ${PSEH_LIB} arbiter cmlib ntlsalib rtl ${ROSSYM_LIB} libcntpr wdmguid ioevent)
+    target_link_libraries(ntoskrnl cportlib csq ${PSEH_LIB} arbiter cmlib ntlsalib rtl ${ROSSYM_LIB} libcntpr wdmguid ioevent)
 
-if(STACK_PROTECTOR)
-    target_sources(ntoskrnl PRIVATE $<TARGET_OBJECTS:gcc_ssp_nt>)
-endif()
+    if(STACK_PROTECTOR)
+        target_sources(ntoskrnl PRIVATE $<TARGET_OBJECTS:gcc_ssp_nt>)
+    endif()
 
-add_importlibs(ntoskrnl hal kdcom bootvid)
-add_pch(ntoskrnl ${REACTOS_SOURCE_DIR}/ntoskrnl/include/ntoskrnl.h "${PCH_SKIP_SOURCE}")
-add_dependencies(ntoskrnl psdk asm)
-add_cd_file(TARGET ntoskrnl DESTINATION reactos/system32 NO_CAB FOR all)
+    add_importlibs(ntoskrnl hal kdcom bootvid)
+    add_pch(ntoskrnl ${REACTOS_SOURCE_DIR}/ntoskrnl/include/ntoskrnl.h "${PCH_SKIP_SOURCE}")
+    add_dependencies(ntoskrnl psdk asm)
+    add_cd_file(TARGET ntoskrnl DESTINATION reactos/system32 NO_CAB FOR all)
 
-if(BUILD_MP)
     add_subdirectory(ntkrnlmp)
 endif()
 

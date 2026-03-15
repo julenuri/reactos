@@ -40,13 +40,13 @@
  * as well as its interface.
  *
  * General introduction about "Shell Links" (MSDN):
- *   https://msdn.microsoft.com/en-us/library/windows/desktop/bb776891(v=vs.85).aspx
+ *   https://learn.microsoft.com/en-us/windows/win32/shell/links
  *
  *
  * Details of the file format:
  *
  * - Official MSDN documentation "[MS-SHLLINK]: Shell Link (.LNK) Binary File Format":
- *   https://msdn.microsoft.com/en-us/library/dd871305.aspx
+ *   https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-shllink/16cb4ca1-9339-4d0c-a68d-bf1d6cc0f943
  *
  * - Forensics:
  *   http://forensicswiki.org/wiki/LNK
@@ -55,8 +55,8 @@
  *   https://github.com/libyal/liblnk/blob/master/documentation/Windows%20Shortcut%20File%20(LNK)%20format.asciidoc
  *
  * - List of possible shell link header flags (SHELL_LINK_DATA_FLAGS enumeration):
- *   https://msdn.microsoft.com/en-us/library/windows/desktop/bb762540(v=vs.85).aspx
- *   https://msdn.microsoft.com/en-us/library/dd891314.aspx
+ *   https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/ne-shlobj_core-shell_link_data_flags
+ *   https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-shllink/ae350202-3ba9-4790-9e9e-98935f4ee5af
  *
  *
  * In addition to storing its target by using a PIDL, a shell link file also
@@ -66,12 +66,12 @@
  *
  * - The first and oldest one (from NewShell/WinNT4) is the "LinkInfo" structure,
  *   stored in a serialized manner at the beginning of the shell link file:
- *   https://msdn.microsoft.com/en-us/library/dd871404.aspx
+ *   https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-shllink/6813269d-0cc8-4be2-933f-e96e8e3412dc
  *   The official API for manipulating this is located in LINKINFO.DLL .
  *
  * - The second, more recent one, is an extra binary block appended to the
  *   extra-data list of the shell link file: this is the "TrackerDataBlock":
- *   https://msdn.microsoft.com/en-us/library/dd891376.aspx
+ *   https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-shllink/df8e3748-fba5-4524-968a-f72be06d71fc
  *   Its purpose is for link tracking, and works in coordination with the
  *   "Distributed Link Tracking" service ('TrkWks' client, 'TrkSvr' server).
  *   See a detailed explanation at:
@@ -84,12 +84,12 @@
  * The philosophy of this approach is explained in detail inside the MSDN article
  * "Application Resiliency: Unlock the Hidden Features of Windows Installer"
  * (by Michael Sanford), here:
- *   https://msdn.microsoft.com/en-us/library/aa302344.aspx
+ *   https://learn.microsoft.com/en-us/previous-versions/dotnet/articles/aa302344(v=msdn.10)
  *
  * This functionality is implemented by adding a binary "Darwin" data block
  * of type "EXP_DARWIN_LINK", signature EXP_DARWIN_ID_SIG == 0xA0000006,
  * to the shell link file:
- *   https://msdn.microsoft.com/en-us/library/dd871369.aspx
+ *   https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-shllink/48f8a4c4-99fe-4787-a39f-b1367103eba8
  * or, this could be done more simply by specifying a special link target path
  * with the IShellLink::SetPath() function. Defining the following GUID:
  *   SHELL32_AdvtShortcutComponent = "::{9db1186e-40df-11d1-aa8c-00c04fb67863}:"
@@ -104,12 +104,12 @@
  * older technology introduced in Internet Explorer 3 (and now obsolete since
  * Internet Explorer 7), called "MS Internet Component Download (MSICD)", see
  * this MSDN introductory article:
- *   https://msdn.microsoft.com/en-us/library/aa741198(v=vs.85).aspx
+ *   https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/aa741198(v=vs.85)
  * and leveraged in Internet Explorer 4 with "Software Update Channels", see:
- *   https://msdn.microsoft.com/en-us/library/aa740931(v=vs.85).aspx
+ *   https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/aa740931(v=vs.85)
  * Applications supporting this technology could present shell links having
  * a special target, see subsection "Modifying the Shortcut" in the article:
- *   https://msdn.microsoft.com/en-us/library/aa741201(v=vs.85).aspx#pub_shor
+ *   https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/aa741201(v=vs.85)#pub_shor
  *
  * Similarly as for the MSI shortcuts, these MSICD shortcuts are created by
  * specifying a special link target path with the IShellLink::SetPath() function,
@@ -129,7 +129,7 @@
  * a different signature EXP_LOGO3_ID_SIG == 0xA0000007 . Such shell links are
  * called "Logo3" shortcuts. They were evoked in this user comment in "The Old
  * New Thing" blog:
- *   https://blogs.msdn.microsoft.com/oldnewthing/20121210-00/?p=5883#comment-1025083
+ *   https://web.archive.org/web/20190110073640/https://blogs.msdn.microsoft.com/oldnewthing/20121210-00/?p=5883#comment-1025083
  *
  * The shell exports the API 'SoftwareUpdateMessageBox' (in shdocvw.dll) that
  * displays a message when an update for an application supporting this
@@ -214,6 +214,22 @@ static LPWSTR __inline strdupW(LPCWSTR src)
     if (dest)
         wcscpy(dest, src);
     return dest;
+}
+
+static BOOL PathEnvSubstIsDirectory(LPCWSTR pszPath)
+{
+    // Note: Don't call SHExpandEnvironmentStringsW here, we need the required length
+    WCHAR szStack[MAX_PATH];
+    DWORD cch = ExpandEnvironmentStringsW(pszPath, szStack, _countof(szStack));
+    if (cch <= _countof(szStack))
+        return cch && PathIsDirectory(szStack);
+
+    PWSTR szHeap = (PWSTR)SHAlloc(cch);
+    if (!szHeap)
+        return FALSE;
+    BOOL bResult = ExpandEnvironmentStringsW(pszPath, szHeap, cch) && PathIsDirectory(szHeap);
+    SHFree(szHeap);
+    return bResult;
 }
 
 // TODO: Use it for constructor & destructor too
@@ -528,7 +544,7 @@ static BOOL Stream_LoadVolume(LOCAL_VOLUME_INFO *vol, CShellLink::volume_info *v
     INT len = vol->dwSize - vol->dwVolLabelOfs;
 
     LPSTR label = (LPSTR)vol;
-    label += vol->dwVolLabelOfs;
+    label += vol->dwVolLabelOfs; // FIXME: 0x14 Unicode
     MultiByteToWideChar(CP_ACP, 0, label, len, volume->label, _countof(volume->label));
 
     return TRUE;
@@ -579,7 +595,7 @@ static HRESULT Stream_LoadLocation(IStream *stm,
     /* if there's a local path, load it */
     DWORD n = loc->dwLocalPathOfs;
     if (n && n < loc->dwTotalSize)
-        *path = Stream_LoadPath(&p[n], loc->dwTotalSize - n);
+        *path = Stream_LoadPath(&p[n], loc->dwTotalSize - n); // FIXME: Unicode offset (if present)
 
     TRACE("type %d serial %08x name %s path %s\n", volume->type,
           volume->serial, debugstr_w(volume->label), debugstr_w(*path));
@@ -834,7 +850,7 @@ static HRESULT Stream_WriteString(IStream* stm, LPCWSTR str)
  *        Figure out how Windows deals with unicode paths here.
  */
 static HRESULT Stream_WriteLocationInfo(IStream* stm, LPCWSTR path,
-        CShellLink::volume_info *volume)
+        CShellLink::volume_info *volume) // FIXME: Write Unicode strings
 {
     LOCAL_VOLUME_INFO *vol;
     LOCATION_INFO *loc;
@@ -897,6 +913,7 @@ HRESULT STDMETHODCALLTYPE CShellLink::Save(IStream *stm, BOOL fClearDirty)
 
     m_Header.dwSize = sizeof(m_Header);
     m_Header.clsid = CLSID_ShellLink;
+    m_Header.dwReserved3 = m_Header.dwReserved2 = m_Header.wReserved1 = 0;
 
     /* Store target attributes */
     WIN32_FIND_DATAW wfd = {};
@@ -918,8 +935,9 @@ HRESULT STDMETHODCALLTYPE CShellLink::Save(IStream *stm, BOOL fClearDirty)
      * already set in accordance by the different mutator member functions.
      * The other flags will be determined now by the presence or absence of data.
      */
-    m_Header.dwFlags &= (SLDF_RUN_WITH_SHIMLAYER | SLDF_RUNAS_USER |
-                         SLDF_RUN_IN_SEPARATE | SLDF_HAS_DARWINID |
+    UINT NT6SimpleFlags = LOBYTE(GetVersion()) > 6 ? (0x00040000 | 0x00400000 | 0x00800000 | 0x02000000) : 0;
+    m_Header.dwFlags &= (SLDF_RUN_WITH_SHIMLAYER | SLDF_RUNAS_USER | SLDF_RUN_IN_SEPARATE |
+                         SLDF_HAS_DARWINID | SLDF_FORCE_NO_LINKINFO | NT6SimpleFlags |
 #if (NTDDI_VERSION < NTDDI_LONGHORN)
                          SLDF_HAS_LOGO3ID |
 #endif
@@ -1729,18 +1747,10 @@ HRESULT STDMETHODCALLTYPE CShellLink::GetIconLocation(LPWSTR pszIconPath, INT cc
 static HRESULT SHELL_PidlGetIconLocationW(PCIDLIST_ABSOLUTE pidl,
         UINT uFlags, PWSTR pszIconFile, UINT cchMax, int *piIndex, UINT *pwFlags)
 {
-    LPCITEMIDLIST pidlLast;
-    CComPtr<IShellFolder> psf;
-
-    HRESULT hr = SHBindToParent(pidl, IID_PPV_ARG(IShellFolder, &psf), &pidlLast);
-    if (FAILED_UNEXPECTEDLY(hr))
-        return hr;
-
     CComPtr<IExtractIconW> pei;
-    hr = psf->GetUIObjectOf(0, 1, &pidlLast, IID_NULL_PPV_ARG(IExtractIconW, &pei));
+    HRESULT hr = SHELL_GetUIObjectOfAbsoluteItem(NULL, pidl, IID_PPV_ARG(IExtractIconW, &pei));
     if (FAILED_UNEXPECTEDLY(hr))
         return hr;
-
     hr = pei->GetIconLocation(uFlags, pszIconFile, cchMax, piIndex, pwFlags);
     if (FAILED_UNEXPECTEDLY(hr))
         return hr;
@@ -1782,6 +1792,7 @@ HRESULT STDMETHODCALLTYPE CShellLink::GetIconLocation(UINT uFlags, PWSTR pszIcon
     }
     else
     {
+        // TODO: If GetIconLocation succeeded, why are we setting GIL_NOTFILENAME? And are we not PERINSTANCE?
         *pwFlags = GIL_NOTFILENAME | GIL_PERCLASS;
     }
 
@@ -2479,14 +2490,11 @@ HRESULT STDMETHODCALLTYPE CShellLink::GetFlags(DWORD *pdwFlags)
 
 HRESULT STDMETHODCALLTYPE CShellLink::SetFlags(DWORD dwFlags)
 {
-#if 0 // FIXME!
+    if (m_Header.dwFlags == dwFlags)
+        return S_FALSE;
     m_Header.dwFlags = dwFlags;
     m_bDirty = TRUE;
     return S_OK;
-#else
-    FIXME("\n");
-    return E_NOTIMPL;
-#endif
 }
 
 /**************************************************************************
@@ -2567,13 +2575,12 @@ HRESULT STDMETHODCALLTYPE CShellLink::QueryContextMenu(HMENU hMenu, UINT indexMe
     if (!InsertMenuItemW(hMenu, indexMenu++, TRUE, &mii))
         return E_FAIL;
 
-    UNREFERENCED_PARAMETER(indexMenu);
-
     return MAKE_HRESULT(SEVERITY_SUCCESS, 0, id);
 }
 
 HRESULT CShellLink::DoOpenFileLocation()
 {
+    // TODO: SHOpenFolderAndSelectItems
     WCHAR szParams[MAX_PATH + 64];
     StringCbPrintfW(szParams, sizeof(szParams), L"/select,%s", m_sPath);
 
@@ -2675,7 +2682,7 @@ HRESULT CShellLink::DoOpen(LPCMINVOKECOMMANDINFO lpici)
         sei.nShow = lpici->nShow; // Allow invoker to override .lnk show mode
 
     // Use the invoker specified working directory if the link did not specify one
-    if (StrIsNullOrEmpty(sei.lpDirectory) || !PathIsDirectoryW(sei.lpDirectory))
+    if (StrIsNullOrEmpty(sei.lpDirectory) || !PathEnvSubstIsDirectory(sei.lpDirectory))
     {
         LPCSTR pszDirA = lpici->lpDirectory;
         if (unicode && !StrIsNullOrEmpty(iciex->lpDirectoryW))
@@ -2906,7 +2913,7 @@ BOOL CShellLink::OnInitDialog(HWND hwndDlg, HWND hwndFocus, LPARAM lParam)
 
     HWND hWndTarget = GetDlgItem(hwndDlg, IDC_SHORTCUT_TARGET_TEXT);
     EnableWindow(hWndTarget, !disablecontrols);
-    PostMessage(hWndTarget, EM_SETSEL, 0, -1); // Fix caret bug when first opening the tab
+    PostMessage(hWndTarget, EM_SETSEL, 0, -1); // Fix caret bug when first opening the tab [CORE-20016]
 
     /* auto-completion */
     SHAutoComplete(hWndTarget, SHACF_DEFAULT);
@@ -3142,20 +3149,9 @@ HRESULT STDMETHODCALLTYPE CShellLink::DragEnter(IDataObject *pDataObject,
     if (*pdwEffect == DROPEFFECT_NONE)
         return S_OK;
 
-    LPCITEMIDLIST pidlLast;
-    CComPtr<IShellFolder> psf;
-
-    HRESULT hr = SHBindToParent(m_pPidl, IID_PPV_ARG(IShellFolder, &psf), &pidlLast);
-
+    HRESULT hr = SHELL_GetUIObjectOfAbsoluteItem(NULL, m_pPidl, IID_PPV_ARG(IDropTarget, &m_DropTarget));
     if (SUCCEEDED(hr))
-    {
-        hr = psf->GetUIObjectOf(0, 1, &pidlLast, IID_NULL_PPV_ARG(IDropTarget, &m_DropTarget));
-
-        if (SUCCEEDED(hr))
-            hr = m_DropTarget->DragEnter(pDataObject, dwKeyState, pt, pdwEffect);
-        else
-            *pdwEffect = DROPEFFECT_NONE;
-    }
+        hr = m_DropTarget->DragEnter(pDataObject, dwKeyState, pt, pdwEffect);
     else
         *pdwEffect = DROPEFFECT_NONE;
 

@@ -108,11 +108,15 @@ extern "C" {
 #define PT_FOLDERTYPEMASK       0x70
 #define PT_DESKTOP_REGITEM      0x1F // => SHDID_ROOT_REGITEM
 #define PT_COMPUTER_REGITEM     0x2E // => SHDID_COMPUTER_?
+#define PT_COMPUTER_DRIVE       0x2F
 #define PT_FS                   0x30 // Win95 SHSimpleIDListFromPath
 #define PT_FS_FOLDER_FLAG       0x01
 #define PT_FS_FILE_FLAG         0x02
 #define PT_FS_UNICODE_FLAG      0x04
+#define PT_FS_COMMON_FLAG       0x08
 //      PT_NET_REGITEM          0x4? // => SHDID_NET_OTHER
+#define PT_INTERNET             0x60
+#define PT_INTERNET_URL         0x61
 #define PT_CONTROLS_OLDREGITEM  0x70
 #define PT_CONTROLS_NEWREGITEM  0x71
 #endif
@@ -156,16 +160,6 @@ typedef struct tagPIDLPrinterStruct
     WORD offsServer;
     WCHAR szName[1];
 } PIDLPrinterStruct;
-
-typedef struct tagPIDLRecycleStruct
-{
-    FILETIME LastModification;
-    FILETIME DeletionTime;
-    ULARGE_INTEGER FileSize;
-    ULARGE_INTEGER PhysicalFileSize;
-    DWORD Attributes;
-    WCHAR szName[1];
-} PIDLRecycleStruct;
 
 #endif /* !__REACTOS__ */
 
@@ -233,7 +227,6 @@ typedef struct tagPIDLDATA
 #ifdef __REACTOS__
           struct tagPIDLFontStruct cfont;
           struct tagPIDLPrinterStruct cprinter;
-          struct tagPIDLRecycleStruct crecycle;
 #endif
 	}u;
 } PIDLDATA, *LPPIDLDATA;
@@ -243,7 +236,6 @@ typedef struct tagPIDLDATA
  * getting special values from simple pidls
  */
 DWORD   _ILSimpleGetTextW   (LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize) DECLSPEC_HIDDEN;
-BOOL    _ILGetFileDate      (LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize) DECLSPEC_HIDDEN;
 DWORD   _ILGetFileSize      (LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize) DECLSPEC_HIDDEN;
 BOOL    _ILGetExtension     (LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize) DECLSPEC_HIDDEN;
 DWORD   _ILGetFileAttributes(LPCITEMIDLIST pidl, LPWSTR pOut, UINT uOutSize) DECLSPEC_HIDDEN;
@@ -259,8 +251,7 @@ BOOL	_ILIsMyComputer		(LPCITEMIDLIST pidl) DECLSPEC_HIDDEN;
 #ifdef __REACTOS__
 BOOL	_ILIsMyDocuments	(LPCITEMIDLIST pidl);
 BOOL	_ILIsBitBucket		(LPCITEMIDLIST pidl);
-BOOL	_ILIsNetHood		(LPCITEMIDLIST pidl);
-BOOL    _ILIsControlPanel   (LPCITEMIDLIST pidl);
+#define _ILIsFolderOrFile   _ILGetFSType
 #endif
 BOOL	_ILIsDrive		(LPCITEMIDLIST pidl) DECLSPEC_HIDDEN;
 BOOL	_ILIsFolder		(LPCITEMIDLIST pidl) DECLSPEC_HIDDEN;

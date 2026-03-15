@@ -13,7 +13,7 @@
  *              (creating a native EFI loader for Windows).
  *
  *              This article was very handy during development:
- *              http://msdn.microsoft.com/msdnmag/issues/02/03/PE2/
+ *              https://web.archive.org/web/20131202091645/http://msdn.microsoft.com/en-us/magazine/cc301808.aspx
  */
 
 #pragma once
@@ -63,9 +63,9 @@ PeLdrScanImportDescriptorTable(
 
 BOOLEAN
 PeLdrCheckForLoadedDll(
-    IN OUT PLIST_ENTRY ModuleListHead,
-    IN PCH DllName,
-    OUT PLDR_DATA_TABLE_ENTRY *LoadedEntry);
+    _Inout_ PLIST_ENTRY ModuleListHead,
+    _In_ PCSTR DllName,
+    _Out_ PLDR_DATA_TABLE_ENTRY* LoadedEntry);
 
 PVOID
 PeLdrInitSecurityCookie(

@@ -23,7 +23,7 @@
 extern "C" {
 #endif /* defined(__cplusplus) */
 
-inline ULONG
+static inline ULONG
 Win32DbgPrint(const char *filename, int line, const char *lpFormat, ...)
 {
     char szMsg[512];
@@ -63,11 +63,11 @@ Win32DbgPrint(const char *filename, int line, const char *lpFormat, ...)
 #   define IID_PPV_ARG(Itype, ppType) IID_##Itype, reinterpret_cast<void**>((static_cast<Itype**>(ppType)))
 #   define IID_NULL_PPV_ARG(Itype, ppType) IID_##Itype, NULL, reinterpret_cast<void**>((static_cast<Itype**>(ppType)))
 #else
-#   define IID_PPV_ARG(Itype, ppType) IID_##Itype, (void**)(ppType)
-#   define IID_NULL_PPV_ARG(Itype, ppType) IID_##Itype, NULL, (void**)(ppType)
+#   define IID_PPV_ARG(Itype, ppType) &IID_##Itype, (void**)(ppType)
+#   define IID_NULL_PPV_ARG(Itype, ppType) &IID_##Itype, NULL, (void**)(ppType)
 #endif
 
-inline HRESULT HResultFromWin32(DWORD hr)
+static inline HRESULT HResultFromWin32(DWORD hr)
 {
      // HRESULT_FROM_WIN32 will evaluate its parameter twice, this function will not.
     return HRESULT_FROM_WIN32(hr);
@@ -75,7 +75,7 @@ inline HRESULT HResultFromWin32(DWORD hr)
 
 #if 1
 
-inline BOOL _ROS_FAILED_HELPER(HRESULT hr, const char* expr, const char* filename, int line)
+static inline BOOL _ROS_FAILED_HELPER(HRESULT hr, const char* expr, const char* filename, int line)
 {
     if (FAILED(hr))
     {
@@ -122,9 +122,12 @@ SHELL_ErrorBox(H hwndOwner, UINT Error = GetLastError())
 {
     return SHELL_ErrorBoxHelper(const_cast<HWND>(hwndOwner), Error);
 }
+#else
+#define SHELL_ErrorBox SHELL_ErrorBoxHelper
 #endif
 
 #ifdef __cplusplus
+#ifdef DECLARE_CLASSFACTORY // ATL
 template <typename T>
 class CComCreatorCentralInstance
 {
@@ -454,6 +457,7 @@ HRESULT inline ShellObjectCreatorInit(T1 initArg1, T2 initArg2, T3 initArg3, T4 
 
     return hResult;
 }
+#endif // DECLARE_CLASSFACTORY (ATL)
 
 template<class P, class R> static HRESULT SHILClone(P pidl, R *ppOut)
 {

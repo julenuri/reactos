@@ -169,7 +169,7 @@ Escape(
             di.fwType = 0;
             di.lpszDocName = lpvInData;
 
-            /* NOTE : doc for StartDocA/W at msdn http://msdn2.microsoft.com/en-us/library/ms535793(VS.85).aspx */
+            /* NOTE : doc for StartDocA/W at msdn https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-startdoca */
             retValue = StartDocA(hdc, &di);
 
             /* Check if StartDocA failed */
@@ -179,7 +179,7 @@ Escape(
                     retValue = GetLastError();
 
                     /* Translate StartDocA error code to STARTDOC error code
-                     * see msdn http://msdn2.microsoft.com/en-us/library/ms535472.aspx
+                     * see msdn https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-escape
                      */
                     switch(retValue)
                     {
@@ -776,7 +776,7 @@ BOOL GdiGetHandleUserData(HGDIOBJ hGdiObj, DWORD ObjectType, PVOID *UserData)
         return FALSE;
     }
 
-    *UserData = Entry->UserData;
+    *UserData = WOW64_CAST_TO_PTR(Entry->UserData);
     return TRUE;
 }
 
@@ -794,7 +794,7 @@ GdiGetLDC(HDC hdc)
     }
 
     /* Return the LDC pointer */
-    return pdcattr->pvLDC;
+    return WOW64_CAST_TO_PTR(pdcattr->pvLDC);
 }
 
 BOOL
@@ -811,7 +811,7 @@ GdiSetLDC(HDC hdc, PVOID pvLDC)
     }
 
     /* Set the LDC pointer */
-    pdcattr->pvLDC = pvLDC;
+    pdcattr->pvLDC = WOW64_CAST_FROM_PTR(pvLDC);
     return TRUE;
 }
 

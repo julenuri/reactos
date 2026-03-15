@@ -307,6 +307,7 @@
 307 stdcall SHGetFolderPathW(long long long long ptr)
 308 stdcall SHGetIconOverlayIndexA(str long)
 309 stdcall SHGetIconOverlayIndexW(wstr long)
+@ stdcall -version=0x600+ SHGetIDListFromObject(ptr ptr)
 310 stdcall SHGetInstanceExplorer(long)
 311 stdcall SHGetMalloc(ptr)
 312 stdcall SHGetNewLinkInfo(str str ptr long long) SHGetNewLinkInfoA
@@ -317,7 +318,7 @@
 317 stdcall SHGetSpecialFolderLocation(long long ptr)
 318 stdcall SHGetSpecialFolderPathA(long ptr long long)
 319 stdcall SHGetSpecialFolderPathW(long ptr long long)
-320 stdcall SHGetUnreadMailCountW (long wstr long ptr wstr long)
+320 stdcall SHGetUnreadMailCountW(ptr wstr ptr ptr ptr long)
 321 stdcall SHHelpShortcuts_RunDLL(long long long long) SHHelpShortcuts_RunDLLA
 322 stdcall SHHelpShortcuts_RunDLLA(long long long long)
 323 stdcall SHHelpShortcuts_RunDLLW(long long long long)
@@ -354,7 +355,7 @@
 354 stdcall SheShortenPathW(wstr long)
 355 stdcall ShellAboutA(long str str long)
 356 stdcall ShellAboutW(long wstr wstr long)
-357 stdcall ShellExec_RunDLL(ptr ptr wstr long)
+357 stdcall ShellExec_RunDLL(ptr ptr str long) ShellExec_RunDLLA
 358 stdcall ShellExec_RunDLLA(ptr ptr str long)
 359 stdcall ShellExec_RunDLLW(ptr ptr wstr long)
 360 stdcall ShellExecuteA(long str str str str long)
@@ -460,8 +461,9 @@
 749 stdcall -noname -version=0x501-0x502 SHGetShellStyleHInstance()
 750 stdcall -noname SHGetAttributesFromDataObject(ptr long ptr ptr)
 751 stub -noname SHSimulateDropOnClsid
-752 stdcall -noname SHGetComputerDisplayNameW(long long long long)
+752 stdcall -noname SHGetComputerDisplayNameW(wstr long ptr long)
 753 stdcall -noname CheckStagingArea()
 754 stub -noname SHLimitInputEditWithFlags
 755 stdcall -noname PathIsEqualOrSubFolder(wstr wstr)
 756 stub -noname DeleteFileThumbnail
+757 stdcall -version=0x600+ DisplayNameOfW(ptr ptr long ptr long)
