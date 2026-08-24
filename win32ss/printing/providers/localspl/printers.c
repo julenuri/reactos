@@ -1999,6 +1999,67 @@ LocalClosePrinter(HANDLE hPrinter)
     return TRUE;
 }
 
+static
+PWSTR
+BuildDeviceEntryValue(PCWSTR pwszDriverName, PCWSTR pwszPortName, BOOL bWithTimeouts)
+{
+    SIZE_T cchNeeded;
+    PWSTR pwszValue;
+
+    // Build a value of the format "<Driver>,<Port>[,15,45]".
+    cchNeeded = wcslen(pwszDriverName) + 1 + wcslen(pwszPortName) + 1;
+    if (bWithTimeouts)
+        cchNeeded += 6;
+
+    pwszValue = DllAllocSplMem(cchNeeded * sizeof(WCHAR));
+    if (!pwszValue)
+        return NULL;
+
+    wcscpy(pwszValue, pwszDriverName);
+    wcscat(pwszValue, L",");
+    wcscat(pwszValue, pwszPortName);
+
+    if (bWithTimeouts)
+        wcscat(pwszValue, L",15,45");
+
+    return pwszValue;
+}
+
+static
+VOID
+MaintainWinIniEntries(PCWSTR pwszPrinterName, PCWSTR pwszDriverName, PCWSTR pwszPortName)
+{
+    PWSTR pwszValue;
+
+    if (!pwszPrinterName || !*pwszPrinterName)
+        return;
+
+    // Passing NULL as the value deletes the entry.
+    if (!pwszDriverName || !*pwszDriverName || !pwszPortName || !*pwszPortName)
+    {
+        WriteProfileStringW(L"devices", pwszPrinterName, NULL);
+        WriteProfileStringW(L"PrinterPorts", pwszPrinterName, NULL);
+        return;
+    }
+
+    // Maintain the legacy win.ini sections [devices] and [PrinterPorts] like the
+    // Windows NT print spooler does, so that applications which enumerate printers
+    // through them (e.g. Visual Basic 6 programs using their Printers collection) work.
+    pwszValue = BuildDeviceEntryValue(pwszDriverName, pwszPortName, FALSE);
+    if (pwszValue)
+    {
+        WriteProfileStringW(L"devices", pwszPrinterName, pwszValue);
+        DllFreeSplMem(pwszValue);
+    }
+
+    pwszValue = BuildDeviceEntryValue(pwszDriverName, pwszPortName, TRUE);
+    if (pwszValue)
+    {
+        WriteProfileStringW(L"PrinterPorts", pwszPrinterName, pwszValue);
+        DllFreeSplMem(pwszValue);
+    }
+}
+
 HANDLE WINAPI
 LocalAddPrinter(LPWSTR pName, DWORD level, LPBYTE pPrinterInfo)
 {
@@ -2204,6 +2265,10 @@ LocalAddPrinter(LPWSTR pName, DWORD level, LPBYTE pPrinterInfo)
 
     // The Printer was added successfully.
     RegCloseKey(hPrinterKey);
+
+    // Keep the legacy win.ini entries in sync.
+    MaintainWinIniEntries(pInfo->pPrinterName, pLocalPrinter->pwszPrinterDriver, pPort->pwszName);
+
     SetLastError(ROUTER_SUCCESS);
     return hPrinter;
 
@@ -2273,6 +2338,9 @@ LocalDeletePrinter(HANDLE hPrinter)
 
     // Delete the Printer's registry key.
     RegDeleteKeyW(hPrintersKey, pPrinter->pwszPrinterName);
+
+    // Keep the legacy win.ini entries in sync.
+    MaintainWinIniEntries(pPrinter->pwszPrinterName, NULL, NULL);
 
     // Free all resources of the Printer.
     DllFreeSplStr(pPrinter->pwszPrinterName);

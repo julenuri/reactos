@@ -196,27 +196,40 @@ Cleanup:
     return (dwErrorCode == ERROR_SUCCESS);
 }
 
+static PWSTR
+AsciiStringToUnicode(LPCSTR pstr)
+{
+    UNICODE_STRING us;
+    PWSTR pwsz = NULL;
+
+    if (pstr)
+    {
+        RtlCreateUnicodeStringFromAsciiz(&us, pstr);
+        pwsz = us.Buffer;
+    }
+    return pwsz;
+}
+
+static VOID
+FreeUnicodeString(PWSTR pwsz)
+{
+    UNICODE_STRING us;
+
+    if (pwsz)
+    {
+        us.Buffer = pwsz;
+        RtlFreeUnicodeString(&us);
+    }
+}
+
 HANDLE WINAPI
 AddPrinterA(PSTR pName, DWORD Level, PBYTE pPrinter)
 {
-    UNICODE_STRING pNameW, usBuffer;
+    UNICODE_STRING usNameW;
     PWSTR pwstrNameW;
-    PRINTER_INFO_2W *ppi2w = (PRINTER_INFO_2W*)pPrinter;
     PRINTER_INFO_2A *ppi2a = (PRINTER_INFO_2A*)pPrinter;
+    PRINTER_INFO_2W pi2w;
     HANDLE ret = NULL;
-    PWSTR pwszPrinterName = NULL;
-    PWSTR pwszServerName = NULL;
-    PWSTR pwszShareName = NULL;
-    PWSTR pwszPortName = NULL;
-    PWSTR pwszDriverName = NULL;
-    PWSTR pwszComment = NULL;
-    PWSTR pwszLocation = NULL;
-    PWSTR pwszSepFile = NULL;
-    PWSTR pwszPrintProcessor = NULL;
-    PWSTR pwszDatatype = NULL;
-    PWSTR pwszParameters = NULL;
-    PWSTR pPrintProcessor = NULL;
-    PDEVMODEW pdmw = NULL;
 
     TRACE("AddPrinterA(%s, %d, %p)\n", debugstr_a(pName), Level, pPrinter);
 
@@ -227,91 +240,103 @@ AddPrinterA(PSTR pName, DWORD Level, PBYTE pPrinter)
         return NULL;
     }
 
-    pwstrNameW = AsciiToUnicode(&pNameW,pName);
+    pwstrNameW = AsciiToUnicode(&usNameW, pName);
 
-    if (ppi2a->pShareName)
-    {
-        pwszShareName = AsciiToUnicode(&usBuffer, ppi2a->pShareName);
-        if (!(ppi2w->pShareName = pwszShareName)) goto Cleanup;
-    }
-    if (ppi2a->pPortName)
-    {
-        pwszPortName = AsciiToUnicode(&usBuffer, ppi2a->pPortName);
-        if (!(ppi2w->pPortName = pwszPortName)) goto Cleanup;
-    }
-    if (ppi2a->pDriverName)
-    {
-        pwszDriverName = AsciiToUnicode(&usBuffer, ppi2a->pDriverName);
-        if (!(ppi2w->pDriverName = pwszDriverName)) goto Cleanup;
-    }
-    if (ppi2a->pComment)
-    {
-        pwszComment = AsciiToUnicode(&usBuffer, ppi2a->pComment);
-        if (!(ppi2w->pComment = pwszComment)) goto Cleanup;
-    }
-    if (ppi2a->pLocation)
-    {
-        pwszLocation = AsciiToUnicode(&usBuffer, ppi2a->pLocation);
-        if (!(ppi2w->pLocation = pwszLocation)) goto Cleanup;
-    }
-    if (ppi2a->pSepFile)
-    {
-        pwszSepFile = AsciiToUnicode(&usBuffer, ppi2a->pSepFile);
-        if (!(ppi2w->pSepFile = pwszSepFile)) goto Cleanup;
-    }
+    /* Do NOT overwrite the caller's ANSI structure in place.
+     * Use a temporary Unicode PRINTER_INFO_2W on the stack and convert
+     * each ANSI string field to its Unicode counterpart. */
+    ZeroMemory(&pi2w, sizeof(pi2w));
+
     if (ppi2a->pServerName)
     {
-        pwszPrintProcessor = AsciiToUnicode(&usBuffer, ppi2a->pPrintProcessor);
-        if (!(ppi2w->pPrintProcessor = pwszPrintProcessor)) goto Cleanup;
-    }
-    if (ppi2a->pDatatype)
-    {
-        pwszDatatype = AsciiToUnicode(&usBuffer, ppi2a->pDatatype);
-        if (!(ppi2w->pDatatype = pwszDatatype)) goto Cleanup;
-    }
-    if (ppi2a->pParameters)
-    {
-        pwszParameters = AsciiToUnicode(&usBuffer, ppi2a->pParameters);
-        if (!(ppi2w->pParameters = pwszParameters)) goto Cleanup;
-    }
-    if ( ppi2a->pDevMode )
-    {
-        RosConvertAnsiDevModeToUnicodeDevmode( ppi2a->pDevMode, &pdmw );
-        ppi2w->pDevMode = pdmw;
-    }
-    if (ppi2a->pServerName)
-    {
-        pwszServerName = AsciiToUnicode(&usBuffer, ppi2a->pServerName);
-        if (!(ppi2w->pPrinterName = pwszServerName)) goto Cleanup;
+        pi2w.pServerName = AsciiStringToUnicode(ppi2a->pServerName);
+        if (!pi2w.pServerName) goto Cleanup;
     }
     if (ppi2a->pPrinterName)
     {
-        pwszPrinterName = AsciiToUnicode(&usBuffer, ppi2a->pPrinterName);
-        if (!(ppi2w->pPrinterName = pwszPrinterName)) goto Cleanup;
+        pi2w.pPrinterName = AsciiStringToUnicode(ppi2a->pPrinterName);
+        if (!pi2w.pPrinterName) goto Cleanup;
+    }
+    if (ppi2a->pShareName)
+    {
+        pi2w.pShareName = AsciiStringToUnicode(ppi2a->pShareName);
+        if (!pi2w.pShareName) goto Cleanup;
+    }
+    if (ppi2a->pPortName)
+    {
+        pi2w.pPortName = AsciiStringToUnicode(ppi2a->pPortName);
+        if (!pi2w.pPortName) goto Cleanup;
+    }
+    if (ppi2a->pDriverName)
+    {
+        pi2w.pDriverName = AsciiStringToUnicode(ppi2a->pDriverName);
+        if (!pi2w.pDriverName) goto Cleanup;
+    }
+    if (ppi2a->pComment)
+    {
+        pi2w.pComment = AsciiStringToUnicode(ppi2a->pComment);
+        if (!pi2w.pComment) goto Cleanup;
+    }
+    if (ppi2a->pLocation)
+    {
+        pi2w.pLocation = AsciiStringToUnicode(ppi2a->pLocation);
+        if (!pi2w.pLocation) goto Cleanup;
+    }
+    if (ppi2a->pDevMode)
+    {
+        RosConvertAnsiDevModeToUnicodeDevmode(ppi2a->pDevMode, &pi2w.pDevMode);
+        if (!pi2w.pDevMode) goto Cleanup;
+    }
+    if (ppi2a->pSepFile)
+    {
+        pi2w.pSepFile = AsciiStringToUnicode(ppi2a->pSepFile);
+        if (!pi2w.pSepFile) goto Cleanup;
     }
     if (ppi2a->pPrintProcessor)
     {
-        pPrintProcessor = AsciiToUnicode(&usBuffer, ppi2a->pPrintProcessor);
-        if (!(ppi2w->pPrintProcessor = pPrintProcessor)) goto Cleanup;
+        pi2w.pPrintProcessor = AsciiStringToUnicode(ppi2a->pPrintProcessor);
+        if (!pi2w.pPrintProcessor) goto Cleanup;
+    }
+    if (ppi2a->pDatatype)
+    {
+        pi2w.pDatatype = AsciiStringToUnicode(ppi2a->pDatatype);
+        if (!pi2w.pDatatype) goto Cleanup;
+    }
+    if (ppi2a->pParameters)
+    {
+        pi2w.pParameters = AsciiStringToUnicode(ppi2a->pParameters);
+        if (!pi2w.pParameters) goto Cleanup;
     }
 
-    ret = AddPrinterW(pwstrNameW, Level, (LPBYTE)ppi2w);
+    /* Copy scalar fields. */
+    pi2w.pSecurityDescriptor = ppi2a->pSecurityDescriptor;
+    pi2w.Attributes = ppi2a->Attributes;
+    pi2w.Priority = ppi2a->Priority;
+    pi2w.DefaultPriority = ppi2a->DefaultPriority;
+    pi2w.StartTime = ppi2a->StartTime;
+    pi2w.UntilTime = ppi2a->UntilTime;
+    pi2w.Status = ppi2a->Status;
+    pi2w.cJobs = ppi2a->cJobs;
+    pi2w.AveragePPM = ppi2a->AveragePPM;
+
+    ret = AddPrinterW(pwstrNameW, Level, (LPBYTE)&pi2w);
 
 Cleanup:
-    if (pdmw) HeapFree(hProcessHeap, 0, pdmw);
-    if (pwszPrinterName) HeapFree(hProcessHeap, 0, pwszPrinterName);
-    if (pwszServerName) HeapFree(hProcessHeap, 0, pwszServerName);
-    if (pwszShareName) HeapFree(hProcessHeap, 0, pwszShareName);
-    if (pwszPortName) HeapFree(hProcessHeap, 0, pwszPortName);
-    if (pwszDriverName) HeapFree(hProcessHeap, 0, pwszDriverName);
-    if (pwszComment) HeapFree(hProcessHeap, 0, pwszComment);
-    if (pwszLocation) HeapFree(hProcessHeap, 0, pwszLocation);
-    if (pwszSepFile) HeapFree(hProcessHeap, 0, pwszSepFile);
-    if (pwszPrintProcessor) HeapFree(hProcessHeap, 0, pwszPrintProcessor);
-    if (pwszDatatype) HeapFree(hProcessHeap, 0, pwszDatatype);
-    if (pwszParameters) HeapFree(hProcessHeap, 0, pwszParameters);
+    /* Free the temporary Unicode strings. */
+    FreeUnicodeString(pi2w.pServerName);
+    FreeUnicodeString(pi2w.pPrinterName);
+    FreeUnicodeString(pi2w.pShareName);
+    FreeUnicodeString(pi2w.pPortName);
+    FreeUnicodeString(pi2w.pDriverName);
+    FreeUnicodeString(pi2w.pComment);
+    FreeUnicodeString(pi2w.pLocation);
+    FreeUnicodeString(pi2w.pSepFile);
+    FreeUnicodeString(pi2w.pPrintProcessor);
+    FreeUnicodeString(pi2w.pDatatype);
+    FreeUnicodeString(pi2w.pParameters);
+    if (pi2w.pDevMode) HeapFree(GetProcessHeap(), 0, pi2w.pDevMode);
 
-    RtlFreeUnicodeString(&pNameW);
+    RtlFreeUnicodeString(&usNameW);
     return ret;
 }
 
@@ -3138,6 +3163,9 @@ SetDefaultPrinterW(LPCWSTR pszPrinter)
         ERR("RegSetValueExW failed with status %lu!\n", dwErrorCode);
         goto Cleanup;
     }
+
+    // Keep the legacy win.ini entry in sync.
+    WriteProfileStringW(L"windows", wszDeviceValue, pwszDeviceValueData);
 
 Cleanup:
     if (hDevicesKey)

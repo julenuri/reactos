@@ -1210,7 +1210,7 @@ INT WINAPI GetPrivateProfileStringA( LPCSTR section, LPCSTR entry,
     LPWSTR bufferW;
     INT retW, ret = 0;
 
-    bufferW = buffer ? HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR)) : NULL;
+    bufferW = buffer ? HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, len * sizeof(WCHAR)) : NULL;
     if (section) RtlCreateUnicodeStringFromAsciiz(&sectionW, section);
     else sectionW.Buffer = NULL;
     if (entry) RtlCreateUnicodeStringFromAsciiz(&entryW, entry);
@@ -1227,10 +1227,21 @@ INT WINAPI GetPrivateProfileStringA( LPCSTR section, LPCSTR entry,
     {
         if (retW)
         {
+            if (retW < (INT)len - 1)
+            {
+                /* also convert the final string terminator */
+                if (!entryW.Buffer && retW < (INT)len - 2)
+                    retW++; /* section enumeration: also convert the list terminator */
+                retW++;
+            }
             ret = WideCharToMultiByte(CP_ACP, 0, bufferW, retW, buffer, len - 1, NULL, NULL);
-            if (!ret)
-                ret = len - 1;
+            if (ret == len - 1)  /* overflow */
+            {
+                ret = len - 2;
+                buffer[ret] = 0;
+            }
         }
+        /* buffer stays double-nul terminated: it was zero-initialized */
         buffer[ret] = 0;
     }
 
@@ -1392,15 +1403,15 @@ INT WINAPI GetPrivateProfileSectionA( LPCSTR section, LPSTR buffer,
         return 0;
     }
 
-    bufferW = HeapAlloc(GetProcessHeap(), 0, len * 2 * sizeof(WCHAR));
+    bufferW = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, len * 2 * sizeof(WCHAR));
     RtlCreateUnicodeStringFromAsciiz(&sectionW, section);
     if (filename) RtlCreateUnicodeStringFromAsciiz(&filenameW, filename);
     else filenameW.Buffer = NULL;
 
     retW = GetPrivateProfileSectionW(sectionW.Buffer, bufferW, len * 2, filenameW.Buffer);
+    if (retW == len * 2 - 2) retW++;  /* overflow */
     if (retW)
     {
-        if (retW == len * 2 - 2) retW++;  /* overflow */
         ret = WideCharToMultiByte(CP_ACP, 0, bufferW, retW + 1, buffer, len, NULL, NULL);
         if (!ret || ret == len)  /* overflow */
         {
