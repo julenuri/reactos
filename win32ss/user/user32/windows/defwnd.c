@@ -422,6 +422,15 @@ User32DefWindowProc(HWND hWnd,
             {
                 return 0;
             }
+            /*
+             * The content of a layered window is composited with whatever is
+             * behind it, so its background must not be erased. Erasing it
+             * would destroy the content that is covered by the window.
+             */
+            if (pWnd && (pWnd->ExStyle & WS_EX_LAYERED))
+            {
+                return 1;
+            }
             if (GetClassLongPtrW(hWnd, GCL_STYLE) & CS_PARENTDC)
             {
                 /* can't use GetClipBox with a parent DC or we fill the whole parent */

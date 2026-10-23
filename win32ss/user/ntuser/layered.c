@@ -97,6 +97,59 @@ IntSetLayeredWindowAttributes(PWND pWnd,
    return TRUE;
 }
 
+/*
+ * The content of a layered window is composited over whatever is behind it.
+ * That content therefore has to be up to date, otherwise the new content
+ * would be composited over the old one (which would pile up and leave
+ * "onion skin" traces) and the windows behind (for instance the desktop)
+ * would never become visible.
+ *
+ * This is the "redraw below" that Windows performs before updating the
+ * content of a layered window: the windows that are below the layered window
+ * are repainted, and only then the new content is composited over them.
+ *
+ * ScreenRect is given in screen coordinates.
+ */
+static VOID
+IntRepaintBehindLayeredWindow(PWND pWnd, const RECTL *ScreenRect)
+{
+    PWND Below[64];
+    PWND Child;
+    ULONG Count = 0, i;
+    RECTL Rect;
+
+    /*
+     * Collect the windows that are below the layered window. The list of the
+     * children is ordered from the topmost window to the bottom one, so the
+     * windows below the layered window are the ones that follow it.
+     */
+    for (Child = pWnd->spwndNext; Child != NULL; Child = Child->spwndNext)
+    {
+        if ((Child->style & WS_VISIBLE) && Count < ARRAYSIZE(Below))
+        {
+            Below[Count++] = Child;
+        }
+    }
+
+    /*
+     * Repaint them from the bottom up, otherwise a window that is higher in
+     * the z-order would be painted over by one that is lower.
+     *
+     * The rectangle is given in the coordinates of the client area of the
+     * window that is repainted.
+     */
+    for (i = Count; i > 0; i--)
+    {
+        Child = Below[i - 1];
+
+        Rect = *ScreenRect;
+        RECTL_vOffsetRect(&Rect, -Child->rcClient.left, -Child->rcClient.top);
+
+        co_UserRedrawWindow(Child, &Rect, NULL,
+                            RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOCHILDREN);
+    }
+}
+
 BOOL FASTCALL
 IntUpdateLayeredWindowI( PWND pWnd,
                          UPDATELAYEREDWINDOWINFO *info )
@@ -154,8 +207,9 @@ IntUpdateLayeredWindowI( PWND pWnd,
       RECT Rect;
       BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, 0 };
       COLORREF color_key = (info->dwFlags & ULW_COLORKEY) ? info->crKey : CLR_INVALID;
-      HBITMAP hOldBitmap, hOldBitmap1, hbmSrc, hbmDst;
+      HBITMAP hOldBitmap, hbmSrc;
       DIBSECTION dibs;
+      LONG Width, Height;
 
       Rect = Window;
 
@@ -163,41 +217,71 @@ IntUpdateLayeredWindowI( PWND pWnd,
 
       TRACE("H %d W %d\n",Rect.bottom - Rect.top,Rect.right - Rect.left);
 
+      Width  = Rect.right  - Rect.left;
+      Height = Rect.bottom - Rect.top;
+
+      /* The dirty rectangle is given in window coordinates, just like Rect.
+         Only that part of the window has to be updated. */
+      if (info->prcDirty)
+      {
+         RECT DirtyRect;
+
+         TRACE("prcDirty %d %d %d %d\n",
+               info->prcDirty->left, info->prcDirty->top,
+               info->prcDirty->right, info->prcDirty->bottom);
+
+         RECTL_bIntersectRect( &DirtyRect, &Rect, info->prcDirty );
+         Rect = DirtyRect;
+      }
+
+      /*
+       * Repaint the content that is behind the window before compositing the
+       * new content over it. Without this the previous content of the window
+       * would pile up (the window content is not cleared by the alpha blend
+       * of a fully transparent pixel) and the desktop would stay invisible.
+       *
+       * This has to be done before the destination DC is created, because
+       * repainting the window also invalidates it.
+       */
+      {
+         RECTL ScreenRect;
+
+         ScreenRect = Rect;
+         RECTL_vOffsetRect(&ScreenRect, Window.left, Window.top);
+
+         IntRepaintBehindLayeredWindow(pWnd, &ScreenRect);
+      }
+
       if (!info->hdcDst) hdc = UserGetDCEx(pWnd, NULL, DCX_USESTYLE);
       else hdc = info->hdcDst;
 
-      hbmSrc = NtGdiCreateCompatibleBitmap(info->hdcSrc, Rect.right - Rect.left, Rect.bottom - Rect.top);
-      hbmDst = NtGdiCreateCompatibleBitmap(info->hdcSrc, Rect.right - Rect.left, Rect.bottom - Rect.top);
+      hbmSrc = NtGdiCreateCompatibleBitmap(info->hdcSrc, Width, Height);
 
-      GreGetObject(hbmSrc, sizeof(DIBSECTION), &dibs);
+      if (hbmSrc)
+      {
+         GreGetObject(hbmSrc, sizeof(DIBSECTION), &dibs);
 
-      TRACE("Source Bitmap bc %d\n",dibs.dsBmih.biBitCount);
+         TRACE("Source Bitmap bc %d\n",dibs.dsBmih.biBitCount);
+      }
 
       hdcBuffer = NtGdiCreateCompatibleDC(hdc);
 
       hOldBitmap = (HBITMAP)NtGdiSelectBitmap(hdcBuffer, hbmSrc);
-      hOldBitmap1 = (HBITMAP)NtGdiSelectBitmap(hdc, hbmDst);
 
+      /* Copy the source bitmap into our own buffer, so that we can blend it
+         over the destination without disturbing the source device context. */
       NtGdiStretchBlt( hdcBuffer,
                        Rect.left,
                        Rect.top,
-                       Rect.right - Rect.left,
-                       Rect.bottom - Rect.top,
+                       Width,
+                       Height,
                        info->hdcSrc,
                        Rect.left + (info->pptSrc ? info->pptSrc->x : 0),
                        Rect.top  + (info->pptSrc ? info->pptSrc->y : 0),
-                       Rect.right - Rect.left,
-                       Rect.bottom - Rect.top,
+                       Width,
+                       Height,
                        SRCCOPY,
                        color_key );
-
-      // Need to test this, Dirty before or after StretchBlt?
-      if (info->prcDirty)
-      {
-         ERR("prcDirty\n");
-         RECTL_bIntersectRect( &Rect, &Rect, info->prcDirty );
-         NtGdiPatBlt( hdc, Rect.left, Rect.top, Rect.right - Rect.left, Rect.bottom - Rect.top, BLACKNESS );
-      }
 
       if (info->dwFlags & ULW_ALPHA)
       {
@@ -205,23 +289,28 @@ IntUpdateLayeredWindowI( PWND pWnd,
          TRACE("ULW_ALPHA bop %d Alpha %d aF %d\n", blend.BlendOp, blend.SourceConstantAlpha, blend.AlphaFormat);
       }
 
+      /* Blend the new content over the destination.
+         With ULW_ALPHA the per pixel alpha value of the source tells how much
+         of the destination is preserved: a fully transparent pixel leaves the
+         destination untouched, so whatever is behind the window (the desktop
+         for a translucent window) stays visible.
+         Note that the destination must not be cleared beforehand, otherwise
+         the content behind the window would be destroyed. */
       ret = NtGdiAlphaBlend( hdc,
                              Rect.left,
                              Rect.top,
                              Rect.right - Rect.left,
                              Rect.bottom - Rect.top,
                              hdcBuffer,
-                             Rect.left + (info->pptSrc ? info->pptSrc->x : 0),
-                             Rect.top  + (info->pptSrc ? info->pptSrc->y : 0),
+                             Rect.left,
+                             Rect.top,
                              Rect.right - Rect.left,
                              Rect.bottom - Rect.top,
                              blend,
                              0);
 
-      NtGdiSelectBitmap(hdc, hOldBitmap1);
       NtGdiSelectBitmap(hdcBuffer, hOldBitmap);
       if (hbmSrc) GreDeleteObject(hbmSrc);
-      if (hbmDst) GreDeleteObject(hbmDst);
       if (hdcBuffer) IntGdiDeleteDC(hdcBuffer, FALSE);
       if (!info->hdcDst) UserReleaseDC(pWnd, hdc, FALSE);
    }
