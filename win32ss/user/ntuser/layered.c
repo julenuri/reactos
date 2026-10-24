@@ -11,12 +11,26 @@ DBG_DEFAULT_CHANNEL(UserMisc);
 
 
 typedef struct _LRD_PROP
-{ 
+{
    COLORREF Key;
    BYTE     Alpha;
    BYTE     is_Layered;
    BYTE     NoUsed[2];
    DWORD    Flags;
+   /*
+    * The content that is behind the window. ReactOS has no compositor, so
+    * the window manager does not know what is behind a layered window and
+    * the old content of the layer would stay on the screen ("onion skin")
+    * wherever the new content of the layer is transparent.
+    *
+    * It is therefore saved in a bitmap, which is restored before the layer
+    * is updated.
+    */
+   HBITMAP  hBackground;
+   HDC      hdcBackground;
+   RECTL    BackgroundRect;   /* screen coordinates the bitmap holds */
+   SIZE     BackgroundSize;
+   BOOL     HasBackground;
 } LRD_PROP, *PLRD_PROP;
 
 BOOL FASTCALL
@@ -98,56 +112,151 @@ IntSetLayeredWindowAttributes(PWND pWnd,
 }
 
 /*
- * The content of a layered window is composited over whatever is behind it.
- * That content therefore has to be up to date, otherwise the new content
- * would be composited over the old one (which would pile up and leave
- * "onion skin" traces) and the windows behind (for instance the desktop)
- * would never become visible.
+ * Returns the properties of the layered window, creating them if they do not
+ * exist yet. They are only created by SetLayeredWindowAttributes(), but a
+ * window can be layered without ever calling it.
+ */
+static PLRD_PROP
+IntGetLayeredProperties(PWND pWnd)
+{
+    PLRD_PROP pLrdProp = UserGetProp(pWnd, AtomLayer, TRUE);
+
+    if (!pLrdProp)
+    {
+        pLrdProp = ExAllocatePoolWithTag(PagedPool, sizeof(LRD_PROP), USERTAG_REDIRECT);
+        if (!pLrdProp) return NULL;
+
+        RtlZeroMemory(pLrdProp, sizeof(LRD_PROP));
+        UserSetProp(pWnd, AtomLayer, (HANDLE)pLrdProp, TRUE);
+    }
+
+    return pLrdProp;
+}
+
+/*
+ * Returns the bitmap that holds the content that is behind the layered
+ * window, creating it if needed.
+ */
+static BOOL
+IntLayerBackground_Get(PLRD_PROP pLrdProp, HDC hdc, LONG Width, LONG Height,
+                       const RECTL *ScreenRect)
+{
+    if (pLrdProp->hBackground &&
+        (pLrdProp->BackgroundSize.cx != Width || pLrdProp->BackgroundSize.cy != Height ||
+         pLrdProp->BackgroundRect.left != ScreenRect->left ||
+         pLrdProp->BackgroundRect.top != ScreenRect->top))
+    {
+        /* The window has changed its size or its position, the old background
+           is useless. */
+        if (pLrdProp->hdcBackground)
+        {
+            IntGdiDeleteDC(pLrdProp->hdcBackground, FALSE);
+            pLrdProp->hdcBackground = NULL;
+        }
+        if (pLrdProp->hBackground)
+        {
+            GreDeleteObject(pLrdProp->hBackground);
+            pLrdProp->hBackground = NULL;
+        }
+        pLrdProp->HasBackground = FALSE;
+    }
+
+    if (!pLrdProp->hBackground)
+    {
+        BITMAPINFO bi;
+
+        pLrdProp->hdcBackground = NtGdiCreateCompatibleDC(hdc);
+        if (!pLrdProp->hdcBackground) return FALSE;
+
+        RtlZeroMemory(&bi, sizeof(bi));
+        bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bi.bmiHeader.biWidth = Width;
+        bi.bmiHeader.biHeight = -Height;    /* top-down */
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biCompression = BI_RGB;
+
+        pLrdProp->hBackground = NtGdiCreateDIBSection(hdc, NULL, 0, &bi,
+                                                     DIB_RGB_COLORS,
+                                                     sizeof(BITMAPINFOHEADER),
+                                                     0, 0, NULL);
+        if (!pLrdProp->hBackground)
+        {
+            IntGdiDeleteDC(pLrdProp->hdcBackground, FALSE);
+            pLrdProp->hdcBackground = NULL;
+            return FALSE;
+        }
+
+        NtGdiSelectBitmap(pLrdProp->hdcBackground, pLrdProp->hBackground);
+
+        pLrdProp->BackgroundSize.cx = Width;
+        pLrdProp->BackgroundSize.cy = Height;
+        pLrdProp->BackgroundRect = *ScreenRect;
+        pLrdProp->HasBackground = FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * Restores the content that was behind the layered window and saves the
+ * content that is behind it now.
  *
- * This is the "redraw below" that Windows performs before updating the
- * content of a layered window: the windows that are below the layered window
- * are repainted, and only then the new content is composited over them.
+ * ReactOS has no compositor, so the window manager does not know what is
+ * behind a layered window.  The old content of the layer would therefore stay
+ * on the screen ("onion skin") wherever the new content of the layer is
+ * transparent, and the content that is behind the window (the desktop for
+ * instance) would never be seen.
  *
- * ScreenRect is given in screen coordinates.
+ * The content that is behind the window is therefore saved in a bitmap, which
+ * is restored before the layer is updated.  This is the equivalent of the
+ * "redraw below" that Windows performs, but it does not depend on the windows
+ * below repainting themselves (which is asynchronous and would therefore
+ * repaint over the new content of the layer).
+ *
+ * The rectangle is given in screen coordinates, and the content is saved in
+ * the same coordinates, so that it does not matter where the window is.
  */
 static VOID
-IntRepaintBehindLayeredWindow(PWND pWnd, const RECTL *ScreenRect)
+IntLayerBackground_Update(PLRD_PROP pLrdProp, PWND pWnd, const RECTL *ScreenRect)
 {
-    PWND Below[64];
-    PWND Child;
-    ULONG Count = 0, i;
-    RECTL Rect;
+    LONG Width = ScreenRect->right - ScreenRect->left;
+    LONG Height = ScreenRect->bottom - ScreenRect->top;
+    HDC hdcScreen;
+    UNICODE_STRING DriverName = RTL_CONSTANT_STRING(L"DISPLAY");
 
-    /*
-     * Collect the windows that are below the layered window. The list of the
-     * children is ordered from the topmost window to the bottom one, so the
-     * windows below the layered window are the ones that follow it.
-     */
-    for (Child = pWnd->spwndNext; Child != NULL; Child = Child->spwndNext)
+    if (Width <= 0 || Height <= 0) return;
+
+    hdcScreen = IntGdiCreateDC(&DriverName, NULL, NULL, NULL, FALSE);
+    if (!hdcScreen) return;
+
+    if (!IntLayerBackground_Get(pLrdProp, hdcScreen, Width, Height, ScreenRect))
     {
-        if ((Child->style & WS_VISIBLE) && Count < ARRAYSIZE(Below))
-        {
-            Below[Count++] = Child;
-        }
+        IntGdiDeleteDC(hdcScreen, FALSE);
+        return;
     }
 
-    /*
-     * Repaint them from the bottom up, otherwise a window that is higher in
-     * the z-order would be painted over by one that is lower.
-     *
-     * The rectangle is given in the coordinates of the client area of the
-     * window that is repainted.
-     */
-    for (i = Count; i > 0; i--)
+    if (pLrdProp->HasBackground)
     {
-        Child = Below[i - 1];
-
-        Rect = *ScreenRect;
-        RECTL_vOffsetRect(&Rect, -Child->rcClient.left, -Child->rcClient.top);
-
-        co_UserRedrawWindow(Child, &Rect, NULL,
-                            RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOCHILDREN);
+        /* Restore the content that was behind the window. */
+        NtGdiBitBlt(hdcScreen, ScreenRect->left, ScreenRect->top, Width, Height,
+                    pLrdProp->hdcBackground,
+                    ScreenRect->left - pLrdProp->BackgroundRect.left,
+                    ScreenRect->top - pLrdProp->BackgroundRect.top,
+                    SRCCOPY, CLR_INVALID, 0);
     }
+
+    /* Save the content that is behind the window now. */
+    NtGdiBitBlt(pLrdProp->hdcBackground,
+                ScreenRect->left - pLrdProp->BackgroundRect.left,
+                ScreenRect->top - pLrdProp->BackgroundRect.top,
+                Width, Height,
+                hdcScreen, ScreenRect->left, ScreenRect->top,
+                SRCCOPY, CLR_INVALID, 0);
+
+    pLrdProp->HasBackground = TRUE;
+
+    IntGdiDeleteDC(hdcScreen, FALSE);
 }
 
 BOOL FASTCALL
@@ -234,22 +343,27 @@ IntUpdateLayeredWindowI( PWND pWnd,
          Rect = DirtyRect;
       }
 
-      /*
-       * Repaint the content that is behind the window before compositing the
-       * new content over it. Without this the previous content of the window
-       * would pile up (the window content is not cleared by the alpha blend
-       * of a fully transparent pixel) and the desktop would stay invisible.
-       *
-       * This has to be done before the destination DC is created, because
-       * repainting the window also invalidates it.
-       */
       {
          RECTL ScreenRect;
 
          ScreenRect = Rect;
          RECTL_vOffsetRect(&ScreenRect, Window.left, Window.top);
 
-         IntRepaintBehindLayeredWindow(pWnd, &ScreenRect);
+         /*
+          * Restore the content that was behind the window and save the
+          * content that is behind it now, so that the old content of the
+          * layer does not stay on the screen where the new content of the
+          * layer is transparent ("onion skin").
+          */
+         if (!info->hdcDst)
+         {
+             PLRD_PROP pLrdProp = IntGetLayeredProperties(pWnd);
+
+             if (pLrdProp)
+             {
+                 IntLayerBackground_Update(pLrdProp, pWnd, &ScreenRect);
+             }
+         }
       }
 
       if (!info->hdcDst) hdc = UserGetDCEx(pWnd, NULL, DCX_USESTYLE);
