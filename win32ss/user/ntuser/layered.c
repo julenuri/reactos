@@ -134,19 +134,6 @@ IntGetLayeredProperties(PWND pWnd)
 }
 
 /*
- * TEMPORARY DEBUG: paint a small marker on the screen, so that the test
- * program can tell whether this code runs at all.
- */
-static VOID
-IntLayeredMark(HDC hdc, LONG x, LONG y)
-{
-    RECTL rc;
-
-    rc.left = x; rc.top = y; rc.right = x + 10; rc.bottom = y + 10;
-    NtGdiPatBlt(hdc, x, y, 10, 10, BLACKNESS);
-}
-
-/*
  * Returns the bitmap that holds the content that is behind the layered
  * window, creating it if needed.
  */
@@ -176,23 +163,18 @@ IntLayerBackground_Get(PLRD_PROP pLrdProp, HDC hdc, LONG Width, LONG Height,
 
     if (!pLrdProp->hBackground)
     {
-        BITMAPINFO bi;
-
         pLrdProp->hdcBackground = NtGdiCreateCompatibleDC(hdc);
-        if (!pLrdProp->hdcBackground) return FALSE;
+        if (!pLrdProp->hdcBackground)
+        {
+            return FALSE;
+        }
 
-        RtlZeroMemory(&bi, sizeof(bi));
-        bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        bi.bmiHeader.biWidth = Width;
-        bi.bmiHeader.biHeight = -Height;    /* top-down */
-        bi.bmiHeader.biPlanes = 1;
-        bi.bmiHeader.biBitCount = 32;
-        bi.bmiHeader.biCompression = BI_RGB;
-
-        pLrdProp->hBackground = NtGdiCreateDIBSection(NULL, NULL, 0, &bi,
-                                                     DIB_RGB_COLORS,
-                                                     sizeof(BITMAPINFOHEADER),
-                                                     0, 0, NULL);
+        /*
+         * A compatible bitmap is used instead of a DIB section: the GDI
+         * refuses to create a 32bpp DIB section for the display device, and
+         * the content of the bitmap does not have to be accessed directly.
+         */
+        pLrdProp->hBackground = NtGdiCreateCompatibleBitmap(hdc, Width, Height);
         if (!pLrdProp->hBackground)
         {
             IntGdiDeleteDC(pLrdProp->hdcBackground, FALSE);
@@ -242,9 +224,6 @@ IntLayerBackground_Update(PLRD_PROP pLrdProp, PWND pWnd, const RECTL *ScreenRect
 
     hdcScreen = IntGdiCreateDC(&DriverName, NULL, NULL, NULL, FALSE);
     if (!hdcScreen) return;
-
-    /* TEMPORARY DEBUG: marker that shows that this code runs */
-    IntLayeredMark(hdcScreen, 740, 540);
 
     if (!IntLayerBackground_Get(pLrdProp, hdcScreen, Width, Height, ScreenRect))
     {
