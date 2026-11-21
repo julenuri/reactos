@@ -134,6 +134,18 @@ HalpAddDevice(IN PDRIVER_OBJECT DriverObject,
     /* Initialization is finished */
     PdoDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
+    /*
+     * Invalidate device relations since we added a new device.
+     *
+     * This call was dropped by commit f75318b6 ("[HALX86] Drop hacks in
+     * HalpAddDevice to work around PnP synchronization bugs"), which moved
+     * the creation of the PDO from the boot driver reinitialization
+     * (HalpReportDetectedDevices) to here, without keeping the invalidation
+     * of the device relations. Without it, the PnP manager may not see the
+     * device until the whole tree is enumerated again.
+     */
+    IoInvalidateDeviceRelations(FdoExtension->PhysicalDeviceObject, BusRelations);
+
     /* Find the ACPI watchdog table */
     Wdrt = HalAcpiGetTable(0, 'TRDW');
     if (Wdrt)
